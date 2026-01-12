@@ -1,0 +1,364 @@
+# =============================================================================
+# OROBOROS - Crafting Recipe Configuration
+# =============================================================================
+# Squad Veridia Domain - All recipes for the crafting system
+#
+# RULES:
+# - No cycles allowed (A->B->C->A is FORBIDDEN)
+# - All quantities as integers
+# - crafting_time_ms in milliseconds
+# - skill_points awarded on successful craft
+# =============================================================================
+
+[metadata]
+version = "1.0.0"
+last_modified = "2026-01-11"
+author = "Squad Veridia"
+validated_dag = true  # Set to false to trigger re-validation
+
+# =============================================================================
+# TIER 1: BASIC MATERIALS
+# =============================================================================
+
+[[recipe]]
+id = 1
+name = "Iron Ingot"
+required_level = 5
+crafting_time_ms = 5000
+skill_points = 10
+
+[[recipe.inputs]]
+item_id = 200  # Raw Iron
+quantity = 3
+
+[[recipe.inputs]]
+item_id = 500  # Coal
+quantity = 1
+
+[[recipe.outputs]]
+item_id = 210  # Iron Ingot
+quantity = 1
+
+# -----------------------------------------------------------------------------
+
+[[recipe]]
+id = 2
+name = "Gold Ingot"
+required_level = 15
+crafting_time_ms = 8000
+skill_points = 25
+
+[[recipe.inputs]]
+item_id = 300  # Raw Gold
+quantity = 3
+
+[[recipe.inputs]]
+item_id = 500  # Coal
+quantity = 2
+
+[[recipe.outputs]]
+item_id = 310  # Gold Ingot
+quantity = 1
+
+# =============================================================================
+# TIER 2: ALLOYS
+# =============================================================================
+
+[[recipe]]
+id = 10
+name = "Steel Ingot"
+required_level = 20
+crafting_time_ms = 10000
+skill_points = 40
+
+[[recipe.inputs]]
+item_id = 210  # Iron Ingot
+quantity = 2
+
+[[recipe.inputs]]
+item_id = 500  # Coal
+quantity = 4
+
+[[recipe.outputs]]
+item_id = 220  # Steel Ingot
+quantity = 1
+
+# -----------------------------------------------------------------------------
+
+[[recipe]]
+id = 11
+name = "Electrum Ingot"
+required_level = 30
+crafting_time_ms = 15000
+skill_points = 60
+
+[[recipe.inputs]]
+item_id = 210  # Iron Ingot
+quantity = 1
+
+[[recipe.inputs]]
+item_id = 310  # Gold Ingot
+quantity = 1
+
+[[recipe.outputs]]
+item_id = 320  # Electrum Ingot
+quantity = 1
+
+# =============================================================================
+# TIER 3: EQUIPMENT - TOOLS
+# =============================================================================
+
+[[recipe]]
+id = 100
+name = "Iron Pickaxe"
+required_level = 10
+crafting_time_ms = 8000
+skill_points = 30
+
+[[recipe.inputs]]
+item_id = 210  # Iron Ingot
+quantity = 3
+
+[[recipe.inputs]]
+item_id = 600  # Wood Plank
+quantity = 2
+
+[[recipe.outputs]]
+item_id = 1100  # Iron Pickaxe
+quantity = 1
+
+# -----------------------------------------------------------------------------
+
+[[recipe]]
+id = 101
+name = "Steel Pickaxe"
+required_level = 25
+crafting_time_ms = 12000
+skill_points = 75
+
+[[recipe.inputs]]
+item_id = 220  # Steel Ingot
+quantity = 3
+
+[[recipe.inputs]]
+item_id = 600  # Wood Plank
+quantity = 2
+
+[[recipe.outputs]]
+item_id = 1101  # Steel Pickaxe
+quantity = 1
+
+# -----------------------------------------------------------------------------
+
+[[recipe]]
+id = 102
+name = "Diamond Pickaxe"
+required_level = 40
+crafting_time_ms = 20000
+skill_points = 150
+
+[[recipe.inputs]]
+item_id = 400  # Raw Diamond
+quantity = 3
+
+[[recipe.inputs]]
+item_id = 220  # Steel Ingot
+quantity = 2
+
+[[recipe.inputs]]
+item_id = 601  # Hardwood Plank
+quantity = 2
+
+[[recipe.outputs]]
+item_id = 1102  # Diamond Pickaxe
+quantity = 1
+
+# =============================================================================
+# TIER 3: EQUIPMENT - WEAPONS
+# =============================================================================
+
+[[recipe]]
+id = 200
+name = "Iron Sword"
+required_level = 10
+crafting_time_ms = 10000
+skill_points = 35
+
+[[recipe.inputs]]
+item_id = 210  # Iron Ingot
+quantity = 2
+
+[[recipe.inputs]]
+item_id = 600  # Wood Plank
+quantity = 1
+
+[[recipe.outputs]]
+item_id = 1200  # Iron Sword
+quantity = 1
+
+# -----------------------------------------------------------------------------
+
+[[recipe]]
+id = 201
+name = "Steel Sword"
+required_level = 25
+crafting_time_ms = 15000
+skill_points = 80
+
+[[recipe.inputs]]
+item_id = 220  # Steel Ingot
+quantity = 2
+
+[[recipe.inputs]]
+item_id = 700  # Leather Strip
+quantity = 1
+
+[[recipe.outputs]]
+item_id = 1201  # Steel Sword
+quantity = 1
+
+# -----------------------------------------------------------------------------
+
+[[recipe]]
+id = 202
+name = "Oroboros Blade"
+required_level = 80
+crafting_time_ms = 60000
+skill_points = 500
+
+[[recipe.inputs]]
+item_id = 900  # Oroboros Fragment
+quantity = 5
+
+[[recipe.inputs]]
+item_id = 220  # Steel Ingot
+quantity = 10
+
+[[recipe.inputs]]
+item_id = 400  # Raw Diamond
+quantity = 2
+
+[[recipe.outputs]]
+item_id = 1299  # Oroboros Blade
+quantity = 1
+
+# =============================================================================
+# TIER 3: EQUIPMENT - ARMOR
+# =============================================================================
+
+[[recipe]]
+id = 300
+name = "Iron Helmet"
+required_level = 12
+crafting_time_ms = 8000
+skill_points = 25
+
+[[recipe.inputs]]
+item_id = 210  # Iron Ingot
+quantity = 5
+
+[[recipe.outputs]]
+item_id = 1300  # Iron Helmet
+quantity = 1
+
+# -----------------------------------------------------------------------------
+
+[[recipe]]
+id = 301
+name = "Iron Chestplate"
+required_level = 12
+crafting_time_ms = 12000
+skill_points = 40
+
+[[recipe.inputs]]
+item_id = 210  # Iron Ingot
+quantity = 8
+
+[[recipe.outputs]]
+item_id = 1301  # Iron Chestplate
+quantity = 1
+
+# -----------------------------------------------------------------------------
+
+[[recipe]]
+id = 310
+name = "Steel Helmet"
+required_level = 28
+crafting_time_ms = 12000
+skill_points = 60
+
+[[recipe.inputs]]
+item_id = 220  # Steel Ingot
+quantity = 5
+
+[[recipe.inputs]]
+item_id = 700  # Leather Strip
+quantity = 2
+
+[[recipe.outputs]]
+item_id = 1310  # Steel Helmet
+quantity = 1
+
+# =============================================================================
+# UTILITY ITEMS
+# =============================================================================
+
+[[recipe]]
+id = 400
+name = "Torch"
+required_level = 1
+crafting_time_ms = 1000
+skill_points = 1
+
+[[recipe.inputs]]
+item_id = 500  # Coal
+quantity = 1
+
+[[recipe.inputs]]
+item_id = 602  # Stick
+quantity = 1
+
+[[recipe.outputs]]
+item_id = 1400  # Torch
+quantity = 4
+
+# -----------------------------------------------------------------------------
+
+[[recipe]]
+id = 401
+name = "Healing Potion"
+required_level = 15
+crafting_time_ms = 5000
+skill_points = 20
+
+[[recipe.inputs]]
+item_id = 800  # Red Herb
+quantity = 3
+
+[[recipe.inputs]]
+item_id = 801  # Glass Vial
+quantity = 1
+
+[[recipe.outputs]]
+item_id = 1401  # Healing Potion
+quantity = 1
+
+# =============================================================================
+# DECOMPOSITION (Salvaging)
+# These go backwards but don't create cycles because outputs != inputs
+# =============================================================================
+
+[[recipe]]
+id = 500
+name = "Salvage Iron Equipment"
+required_level = 5
+crafting_time_ms = 3000
+skill_points = 5
+
+[[recipe.inputs]]
+item_id = 1100  # Iron Pickaxe (broken/unwanted)
+quantity = 1
+
+[[recipe.outputs]]
+item_id = 201  # Iron Nugget (less than original investment)
+quantity = 4

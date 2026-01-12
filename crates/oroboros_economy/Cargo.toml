@@ -1,0 +1,67 @@
+# =============================================================================
+# OROBOROS ECONOMY - The Mathematical Brain of the World
+# =============================================================================
+# Squad Veridia's Domain
+#
+# This crate contains:
+# - Loot Table System: O(1) drop chance calculations
+# - Crafting DAG: Transactional recipe system with cycle detection
+# - Fixed-point arithmetic: NO FLOATING POINT in financial calculations
+#
+# RULES:
+# - Pure Rust logic - NO rendering dependencies
+# - All calculations use integers or fixed-point
+# - All configs loaded from external TOML files
+# - Zero allocations in hot path
+# =============================================================================
+
+[package]
+name = "oroboros_economy"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Economy systems for OROBOROS - Loot tables, crafting, and trade"
+
+[dependencies]
+# Core crate for shared types
+oroboros_core = { path = "../oroboros_core" }
+
+# Config file parsing - loaded once at startup
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+
+# Deterministic random number generation
+rand = { version = "0.8", default-features = false, features = ["std_rng"] }
+rand_chacha = "0.3"
+
+# Thread-safe atomics for batching
+parking_lot = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Cryptographic RNG for rare items - SECURITY CRITICAL
+# ChaCha20 is used for valuable drops to prevent prediction attacks
+siphasher = "1.0"
+
+# Memory-mapped files for WAL
+memmap2 = "0.9"
+
+# CRC32 for WAL integrity
+crc32fast = "1.4"
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[lints]
+workspace = true
+
+[[bench]]
+name = "loot_benchmark"
+harness = false
+
+[[bench]]
+name = "crafting_benchmark"
+harness = false

@@ -1,0 +1,44 @@
+# =============================================================================
+# OROBOROS RENDERING - GPU-Bound Voxel Engine
+# =============================================================================
+# SQUAD NEON'S DOMAIN
+# 
+# MANDATE FROM THE ARCHITECT:
+# - GPU-Bound 100% - CPU must stay under 5%
+# - 1 million voxels @ 120 FPS @ 4K
+# - Draw calls under 1000
+# - No pop-in, no stuttering
+# =============================================================================
+
+[package]
+name = "oroboros_rendering"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "GPU-bound voxel rendering engine for OROBOROS"
+
+[dependencies]
+oroboros_core = { path = "../oroboros_core" }
+bytemuck = { workspace = true }
+parking_lot = { workspace = true }
+# WGPU for GPU rendering - no CPU fallback allowed
+wgpu = { version = "0.19", default-features = false, features = ["wgsl"] }
+# Raw window handle for platform integration
+raw-window-handle = "0.6"
+# Tracing for performance profiling (zero-cost when disabled)
+tracing = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# Enable debug overlays (draw call counter, FPS, GPU timings)
+debug_overlay = []
+# Enable mesh shader path (requires GPU support)
+mesh_shaders = []

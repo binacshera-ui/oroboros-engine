@@ -1,0 +1,72 @@
+# =============================================================================
+# OROBOROS Foundry Configuration
+# =============================================================================
+# Solidity development configuration for the blockchain bridge.
+# =============================================================================
+
+[profile.default]
+# Solidity version
+solc_version = "0.8.20"
+
+# Source directories
+src = "solidity"
+out = "out"
+libs = ["lib"]
+test = "test"
+script = "script"
+
+# Optimizer settings - gas efficiency is critical
+optimizer = true
+optimizer_runs = 10000
+
+# EVM version
+evm_version = "paris"
+
+# Compilation cache
+cache = true
+cache_path = "cache"
+
+# Build info for debugging
+build_info = true
+
+# Remappings for imports
+remappings = [
+    "@openzeppelin/=lib/openzeppelin-contracts/",
+]
+
+# FFI for advanced testing (disabled by default for security)
+ffi = false
+
+# Gas reports
+gas_reports = ["PolymorphicNFT"]
+
+[profile.default.fuzz]
+# Fuzz testing configuration
+runs = 1000
+max_test_rejects = 65536
+seed = "0x42"
+
+[profile.ci]
+# CI-specific settings
+optimizer_runs = 1000
+fuzz.runs = 5000
+
+[profile.local]
+# Local development (faster compilation)
+optimizer = false
+fuzz.runs = 100
+
+# =============================================================================
+# RPC Endpoints
+# =============================================================================
+[rpc_endpoints]
+localhost = "http://127.0.0.1:8545"
+mainnet = "${ETH_RPC_URL}"
+sepolia = "${SEPOLIA_RPC_URL}"
+
+# =============================================================================
+# Etherscan Verification
+# =============================================================================
+[etherscan]
+mainnet = { key = "${ETHERSCAN_API_KEY}" }
+sepolia = { key = "${ETHERSCAN_API_KEY}" }

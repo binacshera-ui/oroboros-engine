@@ -1,0 +1,52 @@
+# =============================================================================
+# OROBOROS PROCEDURAL - World Generation Mathematics
+# =============================================================================
+# Squad Veridia's Domain
+#
+# This crate contains:
+# - Simplex Noise: Fast, deterministic terrain generation
+# - Chunk System: Memory-efficient world streaming
+# - Biome Generation: Climate and terrain classification
+#
+# RULES:
+# - Pure Rust - NO rendering code
+# - Deterministic: Same seed = same world, ALWAYS
+# - Chunked generation: Generate and discard quickly
+# - Zero allocations in hot path
+# =============================================================================
+
+[package]
+name = "oroboros_procedural"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Procedural generation for OROBOROS - Noise, terrain, biomes"
+
+[dependencies]
+# Core crate for shared types
+oroboros_core = { path = "../oroboros_core" }
+
+# Serialization for chunk format
+bytemuck = { workspace = true }
+
+# Compression for chunk storage
+lz4_flex = "0.11"
+
+# Thread-safe parallel generation
+parking_lot = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[lints]
+workspace = true
+
+[[bench]]
+name = "noise_benchmark"
+harness = false
+
+[[bench]]
+name = "chunk_benchmark"
+harness = false

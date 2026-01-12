@@ -1,0 +1,210 @@
+# =============================================================================
+# OROBOROS - Loot Table Configuration
+# =============================================================================
+# Squad Veridia Domain - External configuration for game balance
+#
+# RULES:
+# - All drop rates in basis points (10000 = 100%)
+# - All quantities as integers
+# - Game designers can modify without recompiling
+# =============================================================================
+
+[metadata]
+version = "1.0.0"
+last_modified = "2026-01-11"
+author = "Squad Veridia"
+
+# =============================================================================
+# STONE TYPES
+# =============================================================================
+
+[[loot_table]]
+block_id = 1
+block_name = "Stone"
+block_rarity = "Common"
+
+[[loot_table.entries]]
+item_id = 100
+item_name = "Cobblestone"
+weight = 80
+min_quantity = 1
+max_quantity = 1
+rarity = "Common"
+min_level = 0
+min_pickaxe_tier = 0
+
+[[loot_table.entries]]
+item_id = 101
+item_name = "Flint"
+weight = 15
+min_quantity = 1
+max_quantity = 2
+rarity = "Uncommon"
+min_level = 0
+min_pickaxe_tier = 0
+
+[[loot_table.entries]]
+item_id = 102
+item_name = "Amethyst Shard"
+weight = 5
+min_quantity = 1
+max_quantity = 1
+rarity = "Rare"
+min_level = 10
+min_pickaxe_tier = 2
+
+# =============================================================================
+# IRON ORE
+# =============================================================================
+
+[[loot_table]]
+block_id = 10
+block_name = "Iron Ore"
+block_rarity = "Uncommon"
+
+[[loot_table.entries]]
+item_id = 200
+item_name = "Raw Iron"
+weight = 70
+min_quantity = 1
+max_quantity = 3
+rarity = "Uncommon"
+min_level = 5
+min_pickaxe_tier = 1
+
+[[loot_table.entries]]
+item_id = 201
+item_name = "Iron Nugget"
+weight = 25
+min_quantity = 1
+max_quantity = 5
+rarity = "Common"
+min_level = 0
+min_pickaxe_tier = 1
+
+[[loot_table.entries]]
+item_id = 202
+item_name = "Refined Iron Ore"
+weight = 5
+min_quantity = 1
+max_quantity = 1
+rarity = "Rare"
+min_level = 15
+min_pickaxe_tier = 2
+
+# =============================================================================
+# GOLD ORE
+# =============================================================================
+
+[[loot_table]]
+block_id = 11
+block_name = "Gold Ore"
+block_rarity = "Rare"
+
+[[loot_table.entries]]
+item_id = 300
+item_name = "Raw Gold"
+weight = 60
+min_quantity = 1
+max_quantity = 2
+rarity = "Rare"
+min_level = 15
+min_pickaxe_tier = 2
+
+[[loot_table.entries]]
+item_id = 301
+item_name = "Gold Nugget"
+weight = 30
+min_quantity = 1
+max_quantity = 4
+rarity = "Uncommon"
+min_level = 10
+min_pickaxe_tier = 2
+
+[[loot_table.entries]]
+item_id = 302
+item_name = "Gilded Fragment"
+weight = 10
+min_quantity = 1
+max_quantity = 1
+rarity = "Epic"
+min_level = 25
+min_pickaxe_tier = 3
+
+# =============================================================================
+# DIAMOND ORE
+# =============================================================================
+
+[[loot_table]]
+block_id = 12
+block_name = "Diamond Ore"
+block_rarity = "Epic"
+
+[[loot_table.entries]]
+item_id = 400
+item_name = "Raw Diamond"
+weight = 50
+min_quantity = 1
+max_quantity = 1
+rarity = "Epic"
+min_level = 30
+min_pickaxe_tier = 3
+
+[[loot_table.entries]]
+item_id = 401
+item_name = "Diamond Shard"
+weight = 40
+min_quantity = 1
+max_quantity = 3
+rarity = "Rare"
+min_level = 25
+min_pickaxe_tier = 3
+
+[[loot_table.entries]]
+item_id = 402
+item_name = "Flawless Diamond"
+weight = 10
+min_quantity = 1
+max_quantity = 1
+rarity = "Legendary"
+min_level = 50
+min_pickaxe_tier = 4
+
+# =============================================================================
+# MYTHIC ORE (Oroboros Crystal)
+# =============================================================================
+
+[[loot_table]]
+block_id = 99
+block_name = "Oroboros Crystal Vein"
+block_rarity = "Mythic"
+
+[[loot_table.entries]]
+item_id = 900
+item_name = "Oroboros Fragment"
+weight = 60
+min_quantity = 1
+max_quantity = 1
+rarity = "Legendary"
+min_level = 75
+min_pickaxe_tier = 5
+
+[[loot_table.entries]]
+item_id = 901
+item_name = "Oroboros Essence"
+weight = 30
+min_quantity = 1
+max_quantity = 1
+rarity = "Mythic"
+min_level = 90
+min_pickaxe_tier = 5
+
+[[loot_table.entries]]
+item_id = 902
+item_name = "Primordial Crystal"
+weight = 10
+min_quantity = 1
+max_quantity = 1
+rarity = "Mythic"
+min_level = 100
+min_pickaxe_tier = 6

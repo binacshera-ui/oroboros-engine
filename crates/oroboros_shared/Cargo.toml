@@ -1,0 +1,33 @@
+# =============================================================================
+# OROBOROS SHARED - Common Types for Client & Server
+# =============================================================================
+# THIS CRATE HAS NO GPU DEPENDENCIES
+# Both client and server must be able to use these types.
+#
+# ARCHITECT'S RULE: If you add wgpu here, you're fired.
+# =============================================================================
+
+[package]
+name = "oroboros_shared"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Shared types and protocols between OROBOROS client and server"
+
+[dependencies]
+# Serialization for network protocol
+bytemuck = { workspace = true }
+serde = { workspace = true }
+
+# Blockchain primitives (addresses, hashes)
+alloy-primitives = { workspace = true }
+
+# NO GPU DEPENDENCIES ALLOWED HERE
+# NO WGPU
+# NO RAW-WINDOW-HANDLE
+# NOTHING GRAPHICAL
+
+[lints]
+workspace = true

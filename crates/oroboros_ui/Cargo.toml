@@ -1,0 +1,36 @@
+# =============================================================================
+# OROBOROS UI - Bloomberg Terminal Interface
+# =============================================================================
+# SQUAD NEON - Military-Grade Trading UI
+# 
+# MANDATE FROM THE ARCHITECT:
+# - Zero lag on interactions
+# - Tooltips appear on Frame 1 (same microsecond)
+# - Animations are sharp, exponential, not "soft"
+# - UI must look like a military trading terminal
+# =============================================================================
+
+[package]
+name = "oroboros_ui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Zero-lag Bloomberg-style UI for OROBOROS"
+
+[dependencies]
+oroboros_core = { path = "../oroboros_core" }
+bytemuck = { workspace = true }
+parking_lot = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# Debug overlay showing UI metrics
+debug_overlay = []

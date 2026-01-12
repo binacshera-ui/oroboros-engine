@@ -1,0 +1,76 @@
+# =============================================================================
+# OROBOROS NETWORKING - The Ghost Protocol
+# =============================================================================
+# Squad Inferno's Core Infrastructure
+# 
+# MISSION: Sub-millisecond latency, zero allocations in hot path, lock-free
+# 
+# Features:
+# - Custom UDP protocol with reliability layer
+# - Snapshot interpolation with delta compression
+# - Client-side prediction with server reconciliation
+# - Authoritative server model (Trust No One)
+# =============================================================================
+
+[package]
+name = "oroboros_networking"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Zero-latency networking for OROBOROS - Ghost Protocol implementation"
+
+[features]
+default = []
+# Enable simulation mode for testing with packet loss and jitter
+simulation = []
+# Enable detailed network statistics
+stats = []
+
+[dependencies]
+# Core dependencies
+oroboros_core = { path = "../oroboros_core" }
+bytemuck = { workspace = true }
+parking_lot = { workspace = true }
+crossbeam-channel = { workspace = true }
+
+# Async runtime - minimal features
+tokio = { workspace = true, features = ["rt-multi-thread", "net", "time", "sync"] }
+
+# Logging
+tracing = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+rand = "0.8"
+
+[lints]
+workspace = true
+
+[[bench]]
+name = "networking_benchmark"
+harness = false
+
+[[bin]]
+name = "inferno_server"
+path = "src/bin/inferno_server.rs"
+
+[[bin]]
+name = "simulation_500_bots"
+path = "src/bin/simulation_500_bots.rs"
+
+[[bin]]
+name = "simulation_realistic"
+path = "src/bin/simulation_realistic.rs"
+
+[[bin]]
+name = "chaos_benchmark"
+path = "src/bin/chaos_benchmark.rs"
+
+[[bin]]
+name = "golden_path_test"
+path = "src/bin/golden_path_test.rs"

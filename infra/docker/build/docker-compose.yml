@@ -1,0 +1,117 @@
+# =============================================================================
+# OROBOROS Docker Compose - Build Environment
+# =============================================================================
+# THE CAGE OF SILENCE: Builds in isolated containers with resource limits.
+#
+# ARCHITECT'S RULES:
+# - CPU Affinity: Bound to cores 2-7 (leaving 0-1 for MEV bot)
+# - Memory: Hard limit to prevent OOM
+# - IO Priority: Best-effort class (lowest priority)
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # ===========================================================================
+  # Build Service - Compiles Rust code
+  # ===========================================================================
+  builder:
+    build:
+      context: ../../..
+      dockerfile: infra/docker/build/Dockerfile
+    container_name: oroboros-builder
+    # CPU affinity - cores 2-7 only (leave 0-1 for MEV)
+    cpuset: "2-7"
+    # Memory limits
+    mem_limit: 8g
+    memswap_limit: 8g
+    # CPU shares (lower = less priority)
+    cpu_shares: 256
+    # OOM killer priority (higher = more likely to be killed)
+    oom_score_adj: 500
+    volumes:
+      - ../../../:/build:ro
+      - cargo-cache:/usr/local/cargo/registry
+      - target-cache:/build/target
+    environment:
+      - CARGO_HOME=/usr/local/cargo
+      - RUSTFLAGS=-C target-cpu=native
+    working_dir: /build
+    command: >
+      sh -c "
+        ionice -c 3 nice -n 19 cargo build --release --workspace &&
+        ionice -c 3 nice -n 19 cargo test --release --workspace --no-fail-fast
+      "
+
+  # ===========================================================================
+  # Benchmark Service - Runs performance tests
+  # ===========================================================================
+  benchmark:
+    build:
+      context: ../../..
+      dockerfile: infra/docker/build/Dockerfile
+    container_name: oroboros-benchmark
+    # Higher priority for accurate benchmarks
+    cpuset: "4-7"
+    mem_limit: 16g
+    # No CPU throttling during benchmarks
+    cpu_shares: 1024
+    volumes:
+      - ../../../:/build:ro
+      - cargo-cache:/usr/local/cargo/registry
+      - target-cache:/build/target
+      - benchmark-results:/build/target/criterion
+    environment:
+      - CARGO_HOME=/usr/local/cargo
+      - RUSTFLAGS=-C target-cpu=native
+    working_dir: /build
+    command: >
+      sh -c "
+        cargo bench --workspace -- --noplot &&
+        echo '=== BENCHMARK RESULTS ===' &&
+        find /build/target/criterion -name 'new' -type d -exec cat {}/estimates.json \;
+      "
+
+  # ===========================================================================
+  # CI Service - Full pipeline
+  # ===========================================================================
+  ci:
+    build:
+      context: ../../..
+      dockerfile: infra/docker/build/Dockerfile
+    container_name: oroboros-ci
+    cpuset: "2-7"
+    mem_limit: 8g
+    cpu_shares: 256
+    oom_score_adj: 500
+    volumes:
+      - ../../../:/build:ro
+      - cargo-cache:/usr/local/cargo/registry
+      - target-cache:/build/target
+    environment:
+      - CARGO_HOME=/usr/local/cargo
+      - RUSTFLAGS=-D warnings -C target-cpu=native
+      - CARGO_INCREMENTAL=0
+    working_dir: /build
+    command: >
+      sh -c "
+        echo '=== CHECKING FORMAT ===' &&
+        cargo fmt --check &&
+        echo '=== CHECKING LINTS ===' &&
+        cargo clippy --workspace --all-targets -- -D warnings &&
+        echo '=== BUILDING ===' &&
+        ionice -c 3 nice -n 19 cargo build --release --workspace &&
+        echo '=== TESTING ===' &&
+        ionice -c 3 nice -n 19 cargo test --release --workspace &&
+        echo '=== CHECKING DOCS ===' &&
+        cargo doc --no-deps --workspace &&
+        echo '=== ALL CHECKS PASSED ==='
+      "
+
+volumes:
+  cargo-cache:
+    driver: local
+  target-cache:
+    driver: local
+  benchmark-results:
+    driver: local

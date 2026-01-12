@@ -1,0 +1,55 @@
+# Rust
+/target/
+Cargo.lock
+**/*.rs.bk
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+server.log
+
+# Temporary files
+/tmp/
+*.tmp
+*.temp
+
+# Release builds (keep in releases, ignore local)
+/oroboros_*.zip
+/release_*/
+/grand_release/
+/professional_alpha/
+/solid_release/
+/unlimited_build/
+/smooth_alpha_build/
+/oroboros_smooth_alpha/
+/release_full_power/
+/release_v1/
+/release_final/
+/brute_force_verified/
+/genesis_staging/
+/diagnostic_build/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Debug
+debug/
+*.pdb

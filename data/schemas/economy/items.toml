@@ -1,0 +1,332 @@
+# =============================================================================
+# OROBOROS - Item Registry
+# =============================================================================
+# Squad Veridia Domain - Master list of all items
+#
+# RULES:
+# - base_value in fixed-point (multiply by 1,000,000 for actual value)
+# - max_stack: maximum items per inventory slot
+# - flags: bitmask of item properties
+# =============================================================================
+
+[metadata]
+version = "1.0.0"
+last_modified = "2026-01-11"
+author = "Squad Veridia"
+
+# Flag definitions:
+# TRADEABLE   = 0x01
+# CONSUMABLE  = 0x02
+# MATERIAL    = 0x04
+# EQUIPMENT   = 0x08
+# SOULBOUND   = 0x10
+
+# =============================================================================
+# RAW MATERIALS - Mining
+# =============================================================================
+
+[[item]]
+id = 100
+name = "Cobblestone"
+max_stack = 64
+base_value = 1000000  # 1.000000
+flags = 0x05  # TRADEABLE | MATERIAL
+
+[[item]]
+id = 101
+name = "Flint"
+max_stack = 64
+base_value = 5000000  # 5.000000
+flags = 0x05  # TRADEABLE | MATERIAL
+
+[[item]]
+id = 102
+name = "Amethyst Shard"
+max_stack = 16
+base_value = 50000000  # 50.000000
+flags = 0x05  # TRADEABLE | MATERIAL
+
+[[item]]
+id = 200
+name = "Raw Iron"
+max_stack = 64
+base_value = 10000000  # 10.000000
+flags = 0x05  # TRADEABLE | MATERIAL
+
+[[item]]
+id = 201
+name = "Iron Nugget"
+max_stack = 64
+base_value = 3000000  # 3.000000
+flags = 0x05  # TRADEABLE | MATERIAL
+
+[[item]]
+id = 202
+name = "Refined Iron Ore"
+max_stack = 32
+base_value = 25000000  # 25.000000
+flags = 0x05  # TRADEABLE | MATERIAL
+
+[[item]]
+id = 300
+name = "Raw Gold"
+max_stack = 64
+base_value = 100000000  # 100.000000
+flags = 0x05  # TRADEABLE | MATERIAL
+
+[[item]]
+id = 301
+name = "Gold Nugget"
+max_stack = 64
+base_value = 30000000  # 30.000000
+flags = 0x05  # TRADEABLE | MATERIAL
+
+[[item]]
+id = 302
+name = "Gilded Fragment"
+max_stack = 16
+base_value = 500000000  # 500.000000
+flags = 0x05  # TRADEABLE | MATERIAL
+
+[[item]]
+id = 400
+name = "Raw Diamond"
+max_stack = 16
+base_value = 1000000000  # 1000.000000
+flags = 0x05  # TRADEABLE | MATERIAL
+
+[[item]]
+id = 401
+name = "Diamond Shard"
+max_stack = 32
+base_value = 300000000  # 300.000000
+flags = 0x05  # TRADEABLE | MATERIAL
+
+[[item]]
+id = 402
+name = "Flawless Diamond"
+max_stack = 8
+base_value = 5000000000  # 5000.000000
+flags = 0x05  # TRADEABLE | MATERIAL
+
+# =============================================================================
+# MYTHIC MATERIALS
+# =============================================================================
+
+[[item]]
+id = 900
+name = "Oroboros Fragment"
+max_stack = 8
+base_value = 10000000000  # 10000.000000
+flags = 0x05  # TRADEABLE | MATERIAL
+
+[[item]]
+id = 901
+name = "Oroboros Essence"
+max_stack = 4
+base_value = 50000000000  # 50000.000000
+flags = 0x05  # TRADEABLE | MATERIAL
+
+[[item]]
+id = 902
+name = "Primordial Crystal"
+max_stack = 1
+base_value = 100000000000  # 100000.000000
+flags = 0x15  # TRADEABLE | MATERIAL | SOULBOUND
+
+# =============================================================================
+# PROCESSED MATERIALS - Ingots
+# =============================================================================
+
+[[item]]
+id = 210
+name = "Iron Ingot"
+max_stack = 64
+base_value = 35000000  # 35.000000
+flags = 0x05  # TRADEABLE | MATERIAL
+
+[[item]]
+id = 220
+name = "Steel Ingot"
+max_stack = 64
+base_value = 120000000  # 120.000000
+flags = 0x05  # TRADEABLE | MATERIAL
+
+[[item]]
+id = 310
+name = "Gold Ingot"
+max_stack = 64
+base_value = 350000000  # 350.000000
+flags = 0x05  # TRADEABLE | MATERIAL
+
+[[item]]
+id = 320
+name = "Electrum Ingot"
+max_stack = 32
+base_value = 400000000  # 400.000000
+flags = 0x05  # TRADEABLE | MATERIAL
+
+# =============================================================================
+# BASIC MATERIALS
+# =============================================================================
+
+[[item]]
+id = 500
+name = "Coal"
+max_stack = 64
+base_value = 2000000  # 2.000000
+flags = 0x05  # TRADEABLE | MATERIAL
+
+[[item]]
+id = 600
+name = "Wood Plank"
+max_stack = 64
+base_value = 1000000  # 1.000000
+flags = 0x05  # TRADEABLE | MATERIAL
+
+[[item]]
+id = 601
+name = "Hardwood Plank"
+max_stack = 64
+base_value = 5000000  # 5.000000
+flags = 0x05  # TRADEABLE | MATERIAL
+
+[[item]]
+id = 602
+name = "Stick"
+max_stack = 64
+base_value = 500000  # 0.500000
+flags = 0x05  # TRADEABLE | MATERIAL
+
+[[item]]
+id = 700
+name = "Leather Strip"
+max_stack = 64
+base_value = 8000000  # 8.000000
+flags = 0x05  # TRADEABLE | MATERIAL
+
+[[item]]
+id = 800
+name = "Red Herb"
+max_stack = 64
+base_value = 3000000  # 3.000000
+flags = 0x07  # TRADEABLE | CONSUMABLE | MATERIAL
+
+[[item]]
+id = 801
+name = "Glass Vial"
+max_stack = 16
+base_value = 5000000  # 5.000000
+flags = 0x05  # TRADEABLE | MATERIAL
+
+# =============================================================================
+# TOOLS - Pickaxes
+# =============================================================================
+
+[[item]]
+id = 1100
+name = "Iron Pickaxe"
+max_stack = 1
+base_value = 150000000  # 150.000000
+flags = 0x09  # TRADEABLE | EQUIPMENT
+durability = 500
+tier = 2
+
+[[item]]
+id = 1101
+name = "Steel Pickaxe"
+max_stack = 1
+base_value = 500000000  # 500.000000
+flags = 0x09  # TRADEABLE | EQUIPMENT
+durability = 1000
+tier = 3
+
+[[item]]
+id = 1102
+name = "Diamond Pickaxe"
+max_stack = 1
+base_value = 5000000000  # 5000.000000
+flags = 0x09  # TRADEABLE | EQUIPMENT
+durability = 3000
+tier = 4
+
+# =============================================================================
+# WEAPONS - Swords
+# =============================================================================
+
+[[item]]
+id = 1200
+name = "Iron Sword"
+max_stack = 1
+base_value = 120000000  # 120.000000
+flags = 0x09  # TRADEABLE | EQUIPMENT
+durability = 400
+damage = 15
+
+[[item]]
+id = 1201
+name = "Steel Sword"
+max_stack = 1
+base_value = 400000000  # 400.000000
+flags = 0x09  # TRADEABLE | EQUIPMENT
+durability = 800
+damage = 25
+
+[[item]]
+id = 1299
+name = "Oroboros Blade"
+max_stack = 1
+base_value = 100000000000  # 100000.000000
+flags = 0x19  # TRADEABLE | EQUIPMENT | SOULBOUND
+durability = 10000
+damage = 100
+
+# =============================================================================
+# ARMOR
+# =============================================================================
+
+[[item]]
+id = 1300
+name = "Iron Helmet"
+max_stack = 1
+base_value = 200000000  # 200.000000
+flags = 0x09  # TRADEABLE | EQUIPMENT
+durability = 300
+armor = 5
+
+[[item]]
+id = 1301
+name = "Iron Chestplate"
+max_stack = 1
+base_value = 350000000  # 350.000000
+flags = 0x09  # TRADEABLE | EQUIPMENT
+durability = 400
+armor = 10
+
+[[item]]
+id = 1310
+name = "Steel Helmet"
+max_stack = 1
+base_value = 600000000  # 600.000000
+flags = 0x09  # TRADEABLE | EQUIPMENT
+durability = 600
+armor = 10
+
+# =============================================================================
+# CONSUMABLES
+# =============================================================================
+
+[[item]]
+id = 1400
+name = "Torch"
+max_stack = 64
+base_value = 1000000  # 1.000000
+flags = 0x03  # TRADEABLE | CONSUMABLE
+
+[[item]]
+id = 1401
+name = "Healing Potion"
+max_stack = 16
+base_value = 25000000  # 25.000000
+flags = 0x03  # TRADEABLE | CONSUMABLE
+heal_amount = 50

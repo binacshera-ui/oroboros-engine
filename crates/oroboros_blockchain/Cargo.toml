@@ -1,0 +1,53 @@
+# =============================================================================
+# OROBOROS BLOCKCHAIN - The Polymorphic Bridge
+# =============================================================================
+# This crate handles:
+# - Solidity contract interaction
+# - Event listening and parsing
+# - State synchronization between chain and game
+#
+# ARCHITECT'S REQUIREMENTS:
+# - E2E latency < 5ms from event to game state update
+# - Zero-copy event parsing where possible
+# - Minimal dependencies - no bloat
+# =============================================================================
+
+[package]
+name = "oroboros_blockchain"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Blockchain bridge for OROBOROS - Fast Solidity integration"
+
+[dependencies]
+# Alloy - Modern Ethereum library (minimal features)
+alloy-primitives = { workspace = true }
+alloy-sol-types = { workspace = true }
+
+# Async runtime - MINIMAL features only
+tokio = { workspace = true }
+
+# Core library for shared types
+oroboros_core = { path = "../oroboros_core" }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Channel for event passing
+crossbeam-channel = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[lints]
+workspace = true
+
+[[bench]]
+name = "blockchain_benchmark"
+harness = false
+
+[[bench]]
+name = "realistic_benchmark"
+harness = false

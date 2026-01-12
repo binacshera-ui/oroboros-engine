@@ -1,0 +1,43 @@
+# =============================================================================
+# OROBOROS CORE - The Zero-Cost Abstraction Engine
+# =============================================================================
+# This crate contains:
+# - ECS (Entity Component System) with zero runtime allocations
+# - Pre-allocated memory pools
+# - Hot path optimized data structures
+# =============================================================================
+
+[package]
+name = "oroboros_core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Core engine for OROBOROS - Zero allocation ECS"
+
+[dependencies]
+bytemuck = { workspace = true }
+parking_lot = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[lints]
+workspace = true
+
+[[bench]]
+name = "ecs_benchmark"
+harness = false
+
+[[bench]]
+name = "realistic_ecs_benchmark"
+harness = false
+
+[[bench]]
+name = "archetype_benchmark"
+harness = false
+
+[[bench]]
+name = "dirty_copy_benchmark"
+harness = false

@@ -1,0 +1,48 @@
+# =============================================================================
+# OROBOROS SECURITY - The Black Box
+# =============================================================================
+# Squad Inferno's Anti-Cheat & Replay System
+#
+# MISSION: Record everything, trust no one
+#
+# Features:
+# - Binary replay recording (compressed)
+# - Perfect deterministic playback
+# - Hitbox vs visual position verification
+# - Anti-cheat detection (aimbot, speedhack)
+# =============================================================================
+
+[package]
+name = "oroboros_security"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Anti-cheat and replay system for OROBOROS"
+
+[dependencies]
+# Core dependencies
+oroboros_core = { path = "../oroboros_core" }
+oroboros_networking = { path = "../oroboros_networking" }
+bytemuck = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[lints]
+workspace = true
+
+[[bench]]
+name = "replay_benchmark"
+harness = false
+
+[[bin]]
+name = "replay_analyzer"
+path = "src/bin/replay_analyzer.rs"

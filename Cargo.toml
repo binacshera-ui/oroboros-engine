@@ -1,0 +1,149 @@
+# =============================================================================
+# OROBOROS - Workspace Configuration
+# =============================================================================
+# ARCHITECT'S RULES:
+# - Zero allocations in hot path
+# - Warnings are errors
+# - Documentation is mandatory
+# - Performance regressions are reverted
+# =============================================================================
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/oroboros_core",
+    "crates/oroboros_shared",
+    "crates/oroboros_blockchain",
+    "crates/oroboros_rendering",
+    "crates/oroboros_ui",
+    "crates/oroboros_economy",
+    "crates/oroboros_procedural",
+    "crates/oroboros_networking",
+    "crates/oroboros_security",
+    "crates/oroboros",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["OROBOROS Team"]
+license = "PROPRIETARY"
+rust-version = "1.75.0"
+
+[workspace.dependencies]
+# Core dependencies - MINIMAL footprint
+thiserror = "1.0"
+parking_lot = "0.12"
+crossbeam-channel = "0.5"
+bytemuck = { version = "1.14", features = ["derive"] }
+
+# Serialization - for config files (loaded once at startup)
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+
+# Compression - for chunk storage
+lz4_flex = "0.11"
+
+# Random - deterministic only
+rand = { version = "0.8", default-features = false, features = ["std_rng"] }
+rand_chacha = "0.3"
+
+# Blockchain - Minimal features only
+alloy-primitives = "0.6"
+alloy-sol-types = "0.6"
+alloy-rpc-types = { version = "0.1", default-features = false }
+alloy-transport = { version = "0.1", default-features = false }
+alloy-provider = { version = "0.1", default-features = false }
+
+# Async - ONLY when absolutely necessary, minimal features
+tokio = { version = "1.35", default-features = false, features = ["rt", "sync", "time", "net"] }
+
+# Benchmarking
+criterion = { version = "0.5", default-features = false }
+
+# Logging - zero-cost when disabled
+tracing = { version = "0.1", default-features = false }
+
+# Graphics - GPU-bound rendering
+wgpu = { version = "0.19", default-features = false, features = ["wgsl"] }
+raw-window-handle = "0.6"
+
+# =============================================================================
+# RELEASE PROFILE - MAXIMUM AGGRESSION
+# =============================================================================
+[profile.release]
+# Link-Time Optimization - FAT for maximum performance
+lto = "fat"
+# Single codegen unit - slower compile, faster runtime
+codegen-units = 1
+# Panic = abort - no unwinding overhead
+panic = "abort"
+# Strip symbols - smaller binary
+strip = "symbols"
+# Optimization level 3
+opt-level = 3
+# Enable debug assertions in release? NO.
+debug-assertions = false
+# Overflow checks? NO - we handle this manually.
+overflow-checks = false
+
+# =============================================================================
+# BENCHMARK PROFILE - RELEASE WITH DEBUG INFO
+# =============================================================================
+[profile.bench]
+inherits = "release"
+debug = true
+strip = "none"
+
+# =============================================================================
+# DEV PROFILE - FAST COMPILATION
+# =============================================================================
+[profile.dev]
+opt-level = 0
+debug = true
+# Even in dev, we don't tolerate panics
+panic = "abort"
+
+# =============================================================================
+# CI PROFILE - BALANCE BETWEEN SPEED AND OPTIMIZATION
+# =============================================================================
+[profile.ci]
+inherits = "release"
+lto = "thin"
+codegen-units = 4
+
+# =============================================================================
+# LINTS - THE DICTATOR'S WILL
+# =============================================================================
+[workspace.lints.rust]
+# Warnings are errors
+warnings = "deny"
+# Unsafe code must be explicitly allowed
+unsafe_code = "deny"
+# Missing docs is an error
+missing_docs = "deny"
+# Dead code is forbidden
+dead_code = "deny"
+# Unused imports are errors
+unused_imports = "deny"
+# Unused variables are errors
+unused_variables = "deny"
+# Unused must_use is an error
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+# Pedantic mode - we want ALL the warnings
+pedantic = "warn"
+# Performance issues are errors
+perf = "deny"
+# Correctness issues are errors
+correctness = "deny"
+# Style issues are warnings
+style = "warn"
+# Complexity issues are warnings
+complexity = "warn"
+# Cargo issues are warnings
+cargo = "warn"
+# Specific denials for hot path
+box_default = "deny"
+large_stack_arrays = "deny"

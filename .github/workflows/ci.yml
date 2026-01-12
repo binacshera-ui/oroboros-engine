@@ -1,0 +1,228 @@
+# =============================================================================
+# OROBOROS CI/CD Pipeline
+# =============================================================================
+# THE DICTATOR'S WILL: No warnings, no regressions, no mercy.
+#
+# RULES:
+# 1. Warning = Build Failed
+# 2. Performance Regression = Revert
+# 3. Missing Docs = Rejected
+# =============================================================================
+
+name: OROBOROS CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  # ===========================================================================
+  # Format Check - First gate
+  # ===========================================================================
+  format:
+    name: "Format Check"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      
+      - name: Check Format
+        run: cargo fmt --all -- --check
+
+  # ===========================================================================
+  # Lint Check - Second gate
+  # ===========================================================================
+  clippy:
+    name: "Clippy Lints"
+    runs-on: ubuntu-latest
+    needs: format
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: clippy
+      
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings -D clippy::pedantic
+
+  # ===========================================================================
+  # Build - Third gate
+  # ===========================================================================
+  build:
+    name: "Build (${{ matrix.os }})"
+    runs-on: ${{ matrix.os }}
+    needs: [format, clippy]
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: build-${{ matrix.os }}
+      
+      - name: Build Release
+        run: cargo build --release --workspace
+
+  # ===========================================================================
+  # Test - Fourth gate
+  # ===========================================================================
+  test:
+    name: "Tests"
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: test
+      
+      - name: Run Tests
+        run: cargo test --release --workspace --no-fail-fast
+
+  # ===========================================================================
+  # Documentation - Fifth gate
+  # ===========================================================================
+  docs:
+    name: "Documentation"
+    runs-on: ubuntu-latest
+    needs: build
+    env:
+      RUSTDOCFLAGS: "-D warnings"
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: docs
+      
+      - name: Build Docs
+        run: cargo doc --no-deps --workspace --all-features
+      
+      - name: Check for Missing Docs
+        run: |
+          # Count undocumented items
+          WARNINGS=$(cargo doc --no-deps --workspace 2>&1 | grep -c "missing documentation" || true)
+          if [ "$WARNINGS" -gt 0 ]; then
+            echo "Found $WARNINGS items missing documentation!"
+            exit 1
+          fi
+
+  # ===========================================================================
+  # Benchmarks - Performance gate
+  # ===========================================================================
+  benchmark:
+    name: "Benchmarks"
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: bench
+      
+      - name: Run Benchmarks
+        run: |
+          cargo bench --workspace -- --noplot 2>&1 | tee benchmark-results.txt
+      
+      - name: Check ECS Tick Time (< 1ms requirement)
+        run: |
+          # Extract the CRITICAL benchmark time
+          TIME=$(grep -A 5 "CRITICAL_tick_1M_positions" benchmark-results.txt | grep "time:" | head -1 || echo "")
+          echo "Benchmark result: $TIME"
+          
+          # Check if time is reported in microseconds (should be < 1000 for < 1ms)
+          if echo "$TIME" | grep -q "ms"; then
+            MS=$(echo "$TIME" | grep -oP '\d+\.\d+' | head -1)
+            if (( $(echo "$MS > 1.0" | bc -l) )); then
+              echo "FAILED: ECS tick time $MS ms exceeds 1ms limit!"
+              exit 1
+            fi
+          fi
+          echo "PASSED: ECS tick time within limits"
+      
+      - name: Check E2E Latency (< 5ms requirement)
+        run: |
+          TIME=$(grep -A 5 "CRITICAL_e2e_latency" benchmark-results.txt | grep "time:" | head -1 || echo "")
+          echo "E2E Latency result: $TIME"
+          
+          if echo "$TIME" | grep -q "ms"; then
+            MS=$(echo "$TIME" | grep -oP '\d+\.\d+' | head -1)
+            if (( $(echo "$MS > 5.0" | bc -l) )); then
+              echo "FAILED: E2E latency $MS ms exceeds 5ms limit!"
+              exit 1
+            fi
+          fi
+          echo "PASSED: E2E latency within limits"
+      
+      - name: Upload Benchmark Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: benchmark-results.txt
+
+  # ===========================================================================
+  # Security Audit
+  # ===========================================================================
+  security:
+    name: "Security Audit"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+      
+      - name: Run Security Audit
+        run: cargo audit
+
+  # ===========================================================================
+  # Final Gate - All checks must pass
+  # ===========================================================================
+  all-checks:
+    name: "All Checks Passed"
+    runs-on: ubuntu-latest
+    needs: [format, clippy, build, test, docs, benchmark, security]
+    steps:
+      - name: Success
+        run: echo "All checks passed! Ready to merge."
