@@ -1,17 +1,8 @@
-# =============================================================================
-# OROBOROS - Cargo Configuration
-# =============================================================================
-# CRITICAL: Static linking for Windows to avoid DLL hell
-# =============================================================================
+# WASM Configuration for GLITCH WARS
+# Enables getrandom JS backend for browser builds
 
-[target.x86_64-pc-windows-gnu]
-# Bundle all C runtime libraries into the EXE
-# This prevents "missing VCRUNTIME140.dll" errors on end-user machines
-rustflags = ["-C", "target-feature=+crt-static"]
-
-# Link statically with MinGW libraries
-linker = "x86_64-w64-mingw32-gcc"
-
-[target.x86_64-pc-windows-msvc]
-# For MSVC builds (if we ever switch)
-rustflags = ["-C", "target-feature=+crt-static"]
+[target.wasm32-unknown-unknown]
+rustflags = [
+    "--cfg", "getrandom_backend=\"wasm_js\"",
+    "--cfg=web_sys_unstable_apis"
+]

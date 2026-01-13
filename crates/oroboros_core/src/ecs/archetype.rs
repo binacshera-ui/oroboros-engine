@@ -745,16 +745,16 @@ impl ArchetypeTable {
             unsafe {
                 let row = storage.add(i * row_size);
 
-                // Prefetch next row (software prefetching)
+                // Prefetch next row (software prefetching) - x86_64 only
+                #[cfg(target_arch = "x86_64")]
                 if i + 4 < len {
                     let prefetch_row = storage.add((i + 4) * row_size);
-                    #[cfg(target_arch = "x86_64")]
-                    {
-                        std::arch::x86_64::_mm_prefetch(
-                            prefetch_row as *const i8,
-                            std::arch::x86_64::_MM_HINT_T0,
-                        );
-                    }
+                    // SAFETY: prefetch is a hint, no side effects
+                    #[allow(unsafe_code)]
+                    std::arch::x86_64::_mm_prefetch(
+                        prefetch_row as *const i8,
+                        std::arch::x86_64::_MM_HINT_T0,
+                    );
                 }
 
                 let pos = &mut *(row as *mut Position);

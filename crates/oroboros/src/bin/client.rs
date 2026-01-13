@@ -28,7 +28,7 @@ use std::io::Write;
 // OPERATION PANOPTICON - DIAGNOSTIC LOGGING SYSTEM
 // =============================================================================
 /// Minimum mouse delta to trigger rotation logging (radians equivalent)
-const MOUSE_LOG_THRESHOLD: f32 = 5.0;
+
 
 // Procedural generation - Infinite terrain
 use oroboros_procedural::{WorldManager, WorldManagerConfig, WorldSeed, ChunkCoord, CHUNK_SIZE};
@@ -40,6 +40,12 @@ use oroboros_procedural::{WorldManager, WorldManagerConfig, WorldSeed, ChunkCoor
 
 // Unit 6 - Procedural Models for NPCs
 use oroboros_rendering::ProceduralModels;
+
+// INDUSTRIAL STANDARD MESHING (block-mesh-rs)
+// WIRE THE NEW ENGINE: Vertex + Index Buffers
+use oroboros_rendering::voxel::{
+    StandardMesher, MeshVoxel, PaddedChunkBuffer, ChunkMesh, TerrainVertex,
+};
 
 // =============================================================================
 // CONFIGURATION
@@ -274,6 +280,8 @@ impl InfiniteWorld {
     /// Check if a neighbor block occludes a face.
     /// CRITICAL: If the neighbor's chunk is NOT loaded, return false (draw the face).
     /// This prevents holes between chunks.
+    /// NOTE: Reserved for raycast/collision - StandardMesher handles meshing occlusion.
+    #[allow(dead_code)]
     fn is_neighbor_occluding(&self, x: i32, y: i32, z: i32) -> bool {
         if y < 0 || y >= 256 {
             return false; // Out of bounds = air = draw face
@@ -608,7 +616,7 @@ impl Npc {
     }
     
     /// Generate instances for this NPC (with HIERARCHICAL WALKING animation)
-    fn generate_instances(&self, time: f32, log_enabled: bool) -> Vec<VoxelInstance> {
+    fn generate_instances(&self, time: f32, _log_enabled: bool) -> Vec<VoxelInstance> {
         let mut instances = Vec::new();
         
         // Scale factor: 20-voxel model -> 2 world unit character
@@ -823,96 +831,17 @@ struct VoxelInstance {
     uv_offset_scale: [f32; 4],
 }
 
-/// Calculate vertex AO based on the 3 neighbors around a corner.
-/// Returns 0 (fully occluded) to 3 (no occlusion).
-fn vertex_ao(side1: bool, side2: bool, corner: bool) -> u8 {
-    if side1 && side2 {
-        0 // Both sides block = maximum occlusion
-    } else {
-        3 - (side1 as u8 + side2 as u8 + corner as u8)
-    }
-}
+// =============================================================================
+// OLD AO FUNCTIONS REMOVED - Now using calculate_face_ao_from_buffer
+// OPERATION INDUSTRIAL STANDARD
+// =============================================================================
 
-/// Calculate average AO for a face based on its 4 corner AO values.
-/// Returns value in range [0.0, 1.0] where 1.0 = no occlusion.
-/// NOTE: Uses is_neighbor_occluding to handle chunk boundaries safely
-fn calculate_face_ao(world: &InfiniteWorld, x: i32, y: i32, z: i32, normal_idx: u32) -> f32 {
-    // Get the 4 corner AO values based on face direction
-    // Each corner needs to check 2 side neighbors and 1 diagonal corner
-    // Using is_neighbor_occluding returns false for unloaded chunks = no AO there
-    
-    let ao_values: [u8; 4] = match normal_idx {
-        0 => { // +X face
-            let nx = x + 1;
-            [
-                vertex_ao(world.is_neighbor_occluding(nx, y - 1, z), world.is_neighbor_occluding(nx, y, z - 1), world.is_neighbor_occluding(nx, y - 1, z - 1)),
-                vertex_ao(world.is_neighbor_occluding(nx, y - 1, z), world.is_neighbor_occluding(nx, y, z + 1), world.is_neighbor_occluding(nx, y - 1, z + 1)),
-                vertex_ao(world.is_neighbor_occluding(nx, y + 1, z), world.is_neighbor_occluding(nx, y, z + 1), world.is_neighbor_occluding(nx, y + 1, z + 1)),
-                vertex_ao(world.is_neighbor_occluding(nx, y + 1, z), world.is_neighbor_occluding(nx, y, z - 1), world.is_neighbor_occluding(nx, y + 1, z - 1)),
-            ]
-        }
-        1 => { // -X face
-            let nx = x - 1;
-            [
-                vertex_ao(world.is_neighbor_occluding(nx, y - 1, z), world.is_neighbor_occluding(nx, y, z + 1), world.is_neighbor_occluding(nx, y - 1, z + 1)),
-                vertex_ao(world.is_neighbor_occluding(nx, y - 1, z), world.is_neighbor_occluding(nx, y, z - 1), world.is_neighbor_occluding(nx, y - 1, z - 1)),
-                vertex_ao(world.is_neighbor_occluding(nx, y + 1, z), world.is_neighbor_occluding(nx, y, z - 1), world.is_neighbor_occluding(nx, y + 1, z - 1)),
-                vertex_ao(world.is_neighbor_occluding(nx, y + 1, z), world.is_neighbor_occluding(nx, y, z + 1), world.is_neighbor_occluding(nx, y + 1, z + 1)),
-            ]
-        }
-        2 => { // +Y face (top)
-            let ny = y + 1;
-            [
-                vertex_ao(world.is_neighbor_occluding(x - 1, ny, z), world.is_neighbor_occluding(x, ny, z - 1), world.is_neighbor_occluding(x - 1, ny, z - 1)),
-                vertex_ao(world.is_neighbor_occluding(x + 1, ny, z), world.is_neighbor_occluding(x, ny, z - 1), world.is_neighbor_occluding(x + 1, ny, z - 1)),
-                vertex_ao(world.is_neighbor_occluding(x + 1, ny, z), world.is_neighbor_occluding(x, ny, z + 1), world.is_neighbor_occluding(x + 1, ny, z + 1)),
-                vertex_ao(world.is_neighbor_occluding(x - 1, ny, z), world.is_neighbor_occluding(x, ny, z + 1), world.is_neighbor_occluding(x - 1, ny, z + 1)),
-            ]
-        }
-        3 => { // -Y face (bottom)
-            let ny = y - 1;
-            [
-                vertex_ao(world.is_neighbor_occluding(x - 1, ny, z), world.is_neighbor_occluding(x, ny, z + 1), world.is_neighbor_occluding(x - 1, ny, z + 1)),
-                vertex_ao(world.is_neighbor_occluding(x + 1, ny, z), world.is_neighbor_occluding(x, ny, z + 1), world.is_neighbor_occluding(x + 1, ny, z + 1)),
-                vertex_ao(world.is_neighbor_occluding(x + 1, ny, z), world.is_neighbor_occluding(x, ny, z - 1), world.is_neighbor_occluding(x + 1, ny, z - 1)),
-                vertex_ao(world.is_neighbor_occluding(x - 1, ny, z), world.is_neighbor_occluding(x, ny, z - 1), world.is_neighbor_occluding(x - 1, ny, z - 1)),
-            ]
-        }
-        4 => { // +Z face
-            let nz = z + 1;
-            [
-                vertex_ao(world.is_neighbor_occluding(x - 1, y, nz), world.is_neighbor_occluding(x, y - 1, nz), world.is_neighbor_occluding(x - 1, y - 1, nz)),
-                vertex_ao(world.is_neighbor_occluding(x + 1, y, nz), world.is_neighbor_occluding(x, y - 1, nz), world.is_neighbor_occluding(x + 1, y - 1, nz)),
-                vertex_ao(world.is_neighbor_occluding(x + 1, y, nz), world.is_neighbor_occluding(x, y + 1, nz), world.is_neighbor_occluding(x + 1, y + 1, nz)),
-                vertex_ao(world.is_neighbor_occluding(x - 1, y, nz), world.is_neighbor_occluding(x, y + 1, nz), world.is_neighbor_occluding(x - 1, y + 1, nz)),
-            ]
-        }
-        5 => { // -Z face
-            let nz = z - 1;
-            [
-                vertex_ao(world.is_neighbor_occluding(x + 1, y, nz), world.is_neighbor_occluding(x, y - 1, nz), world.is_neighbor_occluding(x + 1, y - 1, nz)),
-                vertex_ao(world.is_neighbor_occluding(x - 1, y, nz), world.is_neighbor_occluding(x, y - 1, nz), world.is_neighbor_occluding(x - 1, y - 1, nz)),
-                vertex_ao(world.is_neighbor_occluding(x - 1, y, nz), world.is_neighbor_occluding(x, y + 1, nz), world.is_neighbor_occluding(x - 1, y + 1, nz)),
-                vertex_ao(world.is_neighbor_occluding(x + 1, y, nz), world.is_neighbor_occluding(x, y + 1, nz), world.is_neighbor_occluding(x + 1, y + 1, nz)),
-            ]
-        }
-        _ => [3, 3, 3, 3], // No occlusion
-    };
-    
-    // Average of 4 corners, normalized to 0-1
-    // 3 = no occlusion (1.0), 0 = full occlusion (~0.2)
-    let sum = ao_values[0] as f32 + ao_values[1] as f32 + ao_values[2] as f32 + ao_values[3] as f32;
-    let avg = sum / 12.0; // max is 12 (4 corners * 3)
-    
-    // Remap: 0.0 = darkest (some light), 1.0 = brightest
-    0.3 + avg * 0.7
-}
-
-fn generate_mesh(world: &InfiniteWorld, player_pos: [f32; 3]) -> Vec<VoxelInstance> {
-    let mesh_start = std::time::Instant::now();
-    let mut instances = Vec::new();
-    let mut missing_neighbor_count = 0;
-    let mut chunks_processed = 0;
+/// INDUSTRIAL STANDARD MESHING - using block-mesh-rs
+/// COURSE CORRECTION: Now outputs ChunkMesh (vertices + indices)
+/// Uses 34x34x34 padded arrays to eliminate inter-chunk holes.
+fn generate_terrain_mesh(world: &InfiniteWorld, player_pos: [f32; 3]) -> ChunkMesh {
+    let mut combined_mesh = ChunkMesh::default();
+    let mut mesher = StandardMesher::new();
     
     // Get the player's chunk and generate mesh for nearby chunks
     let player_chunk = WorldManager::world_to_chunk(player_pos[0], player_pos[2]);
@@ -922,93 +851,263 @@ fn generate_mesh(world: &InfiniteWorld, player_pos: [f32; 3]) -> Vec<VoxelInstan
         for cx in (player_chunk.x - render_radius)..=(player_chunk.x + render_radius) {
             let chunk_coord = ChunkCoord::new(cx, cz);
             
-            // PANOPTICON: Check for missing neighbors (potential holes)
-            let neighbors = [
-                ChunkCoord::new(cx + 1, cz),
-                ChunkCoord::new(cx - 1, cz),
-                ChunkCoord::new(cx, cz + 1),
-                ChunkCoord::new(cx, cz - 1),
-            ];
-            
-            let chunk_loaded = world.manager().get_chunk(chunk_coord).is_some();
-            if chunk_loaded {
-                for neighbor in &neighbors {
-                    if world.manager().get_chunk(*neighbor).is_none() {
-                        // Silence missing neighbor warnings in production
-                        missing_neighbor_count += 1;
-                    }
-                }
-            }
-            
             // Check if chunk is loaded
             if let Some(chunk) = world.manager().get_chunk(chunk_coord) {
-                chunks_processed += 1;
                 // World offset for this chunk
                 let world_x_offset = cx * CHUNK_SIZE as i32;
                 let world_z_offset = cz * CHUNK_SIZE as i32;
                 
-                // Iterate over all blocks in chunk
-                for ly in 0..256 {
-                    for lz in 0..CHUNK_SIZE {
-                        for lx in 0..CHUNK_SIZE {
-                            let block_data = chunk.get_block(lx, ly, lz);
-                            if block_data.is_air() {
-                                continue;
-                            }
-                            
-                            let block = BlockType::from_id(block_data.id);
-                            let color = block.color();
-                            let emission = if block == BlockType::Neon { 1.5 } else { 0.0 };
-                            
-                            // World coordinates
-                            let x = world_x_offset + lx as i32;
-                            let y = ly as i32;
-                            let z = world_z_offset + lz as i32;
-                            
-                            // Face directions: (dx, dy, dz, normal_index)
-                            let faces: [(i32, i32, i32, u32); 6] = [
-                                (1, 0, 0, 0),  // +X
-                                (-1, 0, 0, 1), // -X
-                                (0, 1, 0, 2),  // +Y (top)
-                                (0, -1, 0, 3), // -Y (bottom)
-                                (0, 0, 1, 4),  // +Z
-                                (0, 0, -1, 5), // -Z
-                            ];
-
-                            // =========================================================
-                            // OPTIMIZED RENDERING: GREEDY FACE CULLING
-                            // Only draw faces that are visible (neighbor is air/unloaded)
-                            // Result: ~80% less triangles, HIGH PERFORMANCE
-                            // =========================================================
-                            for (dx, dy, dz, normal_idx) in faces {
-                                // OPTIMIZED: Only draw face if neighbor is not solid
-                                // is_neighbor_occluding returns false if chunk not loaded (safe)
-                                if !world.is_neighbor_occluding(x + dx, y + dy, z + dz) {
-                                    // Calculate proper AO for visual quality
-                                    let ao = calculate_face_ao(world, x, y, z, normal_idx);
-                                    
-                                    instances.push(VoxelInstance {
-                                        position_scale: [x as f32, y as f32, z as f32, 1.0],
-                                        dimensions_normal_material: [1.0, 1.0, normal_idx as f32, block as u8 as f32],
-                                        color: [color[0], color[1], color[2], emission],
-                                        uv_offset_scale: [0.0, 0.0, ao, 1.0],
-                                    });
+                // Process each Y-slice as a 32x32x32 sub-chunk for meshing
+                // Total height is 256 = 8 slices of 32
+                for y_slice in 0..8 {
+                    let y_offset = y_slice * 32;
+                    
+                    // Create padded buffer for this sub-chunk
+                    let mut buffer = PaddedChunkBuffer::new();
+                    
+                    // Fill main chunk data (local coords 0-31 -> padded coords 1-32)
+                    for lz in 0..32u32 {
+                        for ly in 0..32u32 {
+                            for lx in 0..32u32 {
+                                let world_y = y_offset + ly as usize;
+                                if world_y < 256 {
+                                    let block_data = chunk.get_block(lx as usize, world_y, lz as usize);
+                                    if !block_data.is_air() {
+                                        buffer.set(lx + 1, ly + 1, lz + 1, MeshVoxel::new(block_data.id as u8));
+                                    }
                                 }
                             }
                         }
                     }
+                    
+                    // Fill padding from neighbors (for seamless chunk edges)
+                    fill_chunk_padding(world, &mut buffer, chunk_coord, y_offset as i32);
+                    
+                    // Generate mesh using INDUSTRIAL STANDARD algorithm
+                    let chunk_world_offset = [world_x_offset, y_offset as i32, world_z_offset];
+                    let chunk_mesh = mesher.generate_mesh(&buffer, chunk_world_offset);
+                    
+                    // Merge into combined mesh
+                    let base_vertex = combined_mesh.vertices.len() as u32;
+                    combined_mesh.vertices.extend(chunk_mesh.vertices);
+                    combined_mesh.indices.extend(
+                        chunk_mesh.indices.iter().map(|i| i + base_vertex)
+                    );
                 }
             }
         }
     }
 
-    // Silent in production - async mesh generation is smooth now
-    let _ = mesh_start.elapsed();
-    let _ = chunks_processed;
-    let _ = missing_neighbor_count;
+    combined_mesh
+}
 
+/// LEGACY: Generate instances for backward compatibility (NPCs, etc.)
+/// Will be phased out as we migrate fully to vertex buffers.
+#[allow(dead_code)]
+fn generate_mesh(world: &InfiniteWorld, player_pos: [f32; 3]) -> Vec<VoxelInstance> {
+    let terrain = generate_terrain_mesh(world, player_pos);
+    
+    // Convert vertices back to instances for legacy pipeline
+    // This is temporary until full pipeline migration
+    let mut instances = Vec::with_capacity(terrain.indices.len() / 6);
+    
+    // Group indices by quads (6 indices = 2 triangles = 1 quad)
+    for quad_idx in 0..(terrain.indices.len() / 6) {
+        let first_idx = terrain.indices[quad_idx * 6] as usize;
+        if first_idx < terrain.vertices.len() {
+            let vertex = &terrain.vertices[first_idx];
+            let block = BlockType::from_id(vertex.material_ao[0] as u16);
+            let color = block.color();
+            let emission = if block == BlockType::Neon { 1.5 } else { 0.0 };
+            
+            instances.push(VoxelInstance {
+                position_scale: [vertex.position[0], vertex.position[1], vertex.position[2], 1.0],
+                dimensions_normal_material: [1.0, 1.0, 0.0, vertex.material_ao[0]],
+                color: [color[0], color[1], color[2], emission],
+                uv_offset_scale: [vertex.uv[0], vertex.uv[1], vertex.material_ao[1], 1.0],
+            });
+        }
+    }
+    
     instances
 }
+
+/// Fill the padding of a chunk buffer from neighbor chunks
+/// DATA FEED FIX: Properly populates all 6 faces of the padding region
+///
+/// The padded buffer is 34x34x34:
+/// - Indices 0 and 33 are padding (neighbor data)
+/// - Indices 1..33 are actual chunk data
+///
+/// CRITICAL: If a neighbor chunk is NOT LOADED, the padding stays AIR (default).
+/// This ensures boundary faces are DRAWN (preventing holes into void).
+fn fill_chunk_padding(
+    world: &InfiniteWorld,
+    buffer: &mut PaddedChunkBuffer,
+    chunk_coord: ChunkCoord,
+    y_offset: i32,
+) {
+    let cx = chunk_coord.x;
+    let cz = chunk_coord.z;
+    
+    // Helper to get voxel from world coordinates
+    // Returns None if out of bounds or chunk not loaded
+    let get_world_voxel = |world_x: i32, world_y: i32, world_z: i32| -> Option<u8> {
+        if world_y < 0 || world_y >= 256 {
+            return None; // Out of Y bounds = AIR
+        }
+        
+        // Calculate which chunk this voxel belongs to
+        let chunk_x = world_x.div_euclid(CHUNK_SIZE as i32);
+        let chunk_z = world_z.div_euclid(CHUNK_SIZE as i32);
+        let local_x = world_x.rem_euclid(CHUNK_SIZE as i32) as usize;
+        let local_z = world_z.rem_euclid(CHUNK_SIZE as i32) as usize;
+        
+        world.manager()
+            .get_chunk(ChunkCoord::new(chunk_x, chunk_z))
+            .and_then(|chunk| {
+                let block = chunk.get_block(local_x, world_y as usize, local_z);
+                if block.is_air() { None } else { Some(block.id as u8) }
+            })
+    };
+    
+    // World coordinates of chunk origin
+    let world_x_base = cx * CHUNK_SIZE as i32;
+    let world_z_base = cz * CHUNK_SIZE as i32;
+    
+    // ==========================================================================
+    // FILL 6 FACES OF PADDING
+    // ==========================================================================
+    
+    // +X face (padded x=33, corresponds to world x = chunk_x + 32)
+    for pz in 1..33u32 {
+        for py in 1..33u32 {
+            let world_x = world_x_base + 32; // One past chunk edge
+            let world_y = y_offset + (py as i32 - 1);
+            let world_z = world_z_base + (pz as i32 - 1);
+            
+            if let Some(material) = get_world_voxel(world_x, world_y, world_z) {
+                buffer.set(33, py, pz, MeshVoxel::new(material));
+            }
+        }
+    }
+    
+    // -X face (padded x=0, corresponds to world x = chunk_x - 1)
+    for pz in 1..33u32 {
+        for py in 1..33u32 {
+            let world_x = world_x_base - 1; // One before chunk edge
+            let world_y = y_offset + (py as i32 - 1);
+            let world_z = world_z_base + (pz as i32 - 1);
+            
+            if let Some(material) = get_world_voxel(world_x, world_y, world_z) {
+                buffer.set(0, py, pz, MeshVoxel::new(material));
+            }
+        }
+    }
+    
+    // +Z face (padded z=33, corresponds to world z = chunk_z + 32)
+    for px in 1..33u32 {
+        for py in 1..33u32 {
+            let world_x = world_x_base + (px as i32 - 1);
+            let world_y = y_offset + (py as i32 - 1);
+            let world_z = world_z_base + 32; // One past chunk edge
+            
+            if let Some(material) = get_world_voxel(world_x, world_y, world_z) {
+                buffer.set(px, py, 33, MeshVoxel::new(material));
+            }
+        }
+    }
+    
+    // -Z face (padded z=0, corresponds to world z = chunk_z - 1)
+    for px in 1..33u32 {
+        for py in 1..33u32 {
+            let world_x = world_x_base + (px as i32 - 1);
+            let world_y = y_offset + (py as i32 - 1);
+            let world_z = world_z_base - 1; // One before chunk edge
+            
+            if let Some(material) = get_world_voxel(world_x, world_y, world_z) {
+                buffer.set(px, py, 0, MeshVoxel::new(material));
+            }
+        }
+    }
+    
+    // +Y face (padded y=33, corresponds to world y = y_offset + 32)
+    for px in 1..33u32 {
+        for pz in 1..33u32 {
+            let world_x = world_x_base + (px as i32 - 1);
+            let world_y = y_offset + 32; // One above sub-chunk
+            let world_z = world_z_base + (pz as i32 - 1);
+            
+            if let Some(material) = get_world_voxel(world_x, world_y, world_z) {
+                buffer.set(px, 33, pz, MeshVoxel::new(material));
+            }
+        }
+    }
+    
+    // -Y face (padded y=0, corresponds to world y = y_offset - 1)
+    for px in 1..33u32 {
+        for pz in 1..33u32 {
+            let world_x = world_x_base + (px as i32 - 1);
+            let world_y = y_offset - 1; // One below sub-chunk
+            let world_z = world_z_base + (pz as i32 - 1);
+            
+            if let Some(material) = get_world_voxel(world_x, world_y, world_z) {
+                buffer.set(px, 0, pz, MeshVoxel::new(material));
+            }
+        }
+    }
+    
+    // ==========================================================================
+    // OPTIONAL: Fill edges (where 2 padding faces meet)
+    // The algorithm mostly doesn't need these, but filling them
+    // ensures correct behavior in edge cases.
+    // ==========================================================================
+    
+    // Edge: X=0, Z=0 (bottom-left edge running up Y)
+    for py in 1..33u32 {
+        let world_x = world_x_base - 1;
+        let world_y = y_offset + (py as i32 - 1);
+        let world_z = world_z_base - 1;
+        if let Some(material) = get_world_voxel(world_x, world_y, world_z) {
+            buffer.set(0, py, 0, MeshVoxel::new(material));
+        }
+    }
+    
+    // Edge: X=33, Z=0
+    for py in 1..33u32 {
+        let world_x = world_x_base + 32;
+        let world_y = y_offset + (py as i32 - 1);
+        let world_z = world_z_base - 1;
+        if let Some(material) = get_world_voxel(world_x, world_y, world_z) {
+            buffer.set(33, py, 0, MeshVoxel::new(material));
+        }
+    }
+    
+    // Edge: X=0, Z=33
+    for py in 1..33u32 {
+        let world_x = world_x_base - 1;
+        let world_y = y_offset + (py as i32 - 1);
+        let world_z = world_z_base + 32;
+        if let Some(material) = get_world_voxel(world_x, world_y, world_z) {
+            buffer.set(0, py, 33, MeshVoxel::new(material));
+        }
+    }
+    
+    // Edge: X=33, Z=33
+    for py in 1..33u32 {
+        let world_x = world_x_base + 32;
+        let world_y = y_offset + (py as i32 - 1);
+        let world_z = world_z_base + 32;
+        if let Some(material) = get_world_voxel(world_x, world_y, world_z) {
+            buffer.set(33, py, 33, MeshVoxel::new(material));
+        }
+    }
+}
+
+// =============================================================================
+// AO CALCULATION REMOVED - Now handled by StandardMesher
+// COURSE CORRECTION: block-mesh-rs handles this internally
+// =============================================================================
 
 /// Generate wireframe cube instances for selection highlight
 fn generate_selection_cube(pos: [i32; 3]) -> Vec<VoxelInstance> {
@@ -1203,12 +1302,15 @@ fn main() {
     // Track game time for animations
     let mut game_time = 0.0f32;
 
-    // Generate initial mesh
-    log!("[MESH] Generating initial mesh...");
+    // Generate initial mesh (INDUSTRIAL STANDARD: Vertex + Index buffers)
+    log!("[MESH] Generating initial terrain mesh...");
     let start = Instant::now();
-    #[allow(unused_assignments)]
-    let mut mesh_instances = generate_mesh(&world, player.position);
-    log!("[MESH] Generated {} instances in {:?}", mesh_instances.len(), start.elapsed());
+    let mut terrain_mesh = generate_terrain_mesh(&world, player.position);
+    log!("[MESH] Generated {} vertices, {} indices ({} triangles) in {:?}", 
+        terrain_mesh.vertices.len(), 
+        terrain_mesh.indices.len(),
+        terrain_mesh.triangle_count(),
+        start.elapsed());
     world.dirty = false;
 
     // Create window
@@ -1244,10 +1346,14 @@ fn main() {
     println!("[GPU] Using: {}", adapter.get_info().name);
     
     // =========================================================================
-    // OPTIMIZED: Standard buffer limits (greedy meshing reduces geometry by ~80%)
+    // FIX: Explicit high limits to prevent "Buffer too small" crashes
     // =========================================================================
-    let limits = wgpu::Limits::default();
-    println!("[GPU] Using standard buffer limits (Optimized mode)");
+    let limits = wgpu::Limits {
+        max_storage_buffer_binding_size: 1 << 30, // 1GB
+        max_buffer_size: 1 << 30, // 1GB
+        ..wgpu::Limits::default()
+    };
+    println!("[GPU] Using HIGH PERFORMANCE buffer limits (1GB)");
     
     let (device, queue) = pollster::block_on(adapter.request_device(
         &wgpu::DeviceDescriptor {
@@ -1298,7 +1404,9 @@ fn main() {
     
     // Shader
     println!("[SHADER] Loading...");
-    let shader_source = include_str!("../../../../crates/oroboros_rendering/shaders/voxel_instanced.wgsl");
+    // FIX: Load shader from assets folder for deployment compatibility
+    // Using include_str! for embedded build, but verifying path correctness
+    let shader_source = include_str!("../../../../assets/shaders/unit2/voxel_instanced.wgsl");
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Voxel Shader"),
         source: wgpu::ShaderSource::Wgsl(shader_source.into()),
@@ -1348,20 +1456,12 @@ fn main() {
         vertex: wgpu::VertexState {
             module: &shader,
             entry_point: "vs_main",
-            buffers: &[wgpu::VertexBufferLayout {
-                array_stride: std::mem::size_of::<VoxelInstance>() as u64,
-                step_mode: wgpu::VertexStepMode::Instance,
-                attributes: &[
-                    wgpu::VertexAttribute { offset: 0, shader_location: 5, format: wgpu::VertexFormat::Float32x4 },
-                    wgpu::VertexAttribute { offset: 16, shader_location: 6, format: wgpu::VertexFormat::Float32x4 },
-                    wgpu::VertexAttribute { offset: 32, shader_location: 7, format: wgpu::VertexFormat::Float32x4 },
-                    wgpu::VertexAttribute { offset: 48, shader_location: 8, format: wgpu::VertexFormat::Float32x4 },
-                ],
-            }],
+            // INDUSTRIAL STANDARD: Vertex buffer layout (not instance!)
+            buffers: &[TerrainVertex::desc()],
         },
         fragment: Some(wgpu::FragmentState {
             module: &shader,
-            entry_point: "fs_main",  // Entry point that calls fs_main_visual helper
+            entry_point: "fs_solid",  // Solid color shader - NO TEXTURES (Group 0 only)
             targets: &[Some(wgpu::ColorTargetState {
                 format,
                 blend: Some(wgpu::BlendState::REPLACE),
@@ -1390,13 +1490,18 @@ fn main() {
         multiview: None,
     });
     
-    // Instance buffer
-    let mut instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Instance Buffer"),
-        contents: bytemuck::cast_slice(&mesh_instances),
+    // INDUSTRIAL STANDARD: Vertex + Index buffers
+    let mut vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Terrain Vertex Buffer"),
+        contents: bytemuck::cast_slice(&terrain_mesh.vertices),
         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
     });
-    let mut instance_count = mesh_instances.len() as u32;
+    let mut index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Terrain Index Buffer"),
+        contents: bytemuck::cast_slice(&terrain_mesh.indices),
+        usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+    });
+    let mut index_count = terrain_mesh.indices.len() as u32;
 
     // Selection highlight buffer (max 6 faces)
     let selection_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -1578,14 +1683,19 @@ fn main() {
 
                         // Regenerate mesh if world changed (mining or streaming)
                         if world.dirty {
-                            mesh_instances = generate_mesh(&world, player.position);
-                            instance_count = mesh_instances.len() as u32;
+                            terrain_mesh = generate_terrain_mesh(&world, player.position);
+                            index_count = terrain_mesh.indices.len() as u32;
                             
-                            // Recreate buffer
-                            instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                                label: Some("Instance Buffer"),
-                                contents: bytemuck::cast_slice(&mesh_instances),
+                            // Recreate vertex + index buffers (INDUSTRIAL STANDARD)
+                            vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                label: Some("Terrain Vertex Buffer"),
+                                contents: bytemuck::cast_slice(&terrain_mesh.vertices),
                                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                            });
+                            index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                label: Some("Terrain Index Buffer"),
+                                contents: bytemuck::cast_slice(&terrain_mesh.indices),
+                                usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
                             });
                             world.dirty = false;
                         }
@@ -1652,21 +1762,15 @@ fn main() {
                             pass.set_pipeline(&pipeline);
                             pass.set_bind_group(0, &bind_group, &[]);
 
-                            // Draw world
-                            pass.set_vertex_buffer(0, instance_buffer.slice(..));
-                            pass.draw(0..6, 0..instance_count);
+                            // INDUSTRIAL STANDARD: Draw terrain with vertex + index buffers
+                            pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                            pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                            pass.draw_indexed(0..index_count, 0, 0..1);
 
-                            // Draw selection highlight
-                            if selection_count > 0 {
-                                pass.set_vertex_buffer(0, selection_buffer.slice(..));
-                                pass.draw(0..6, 0..selection_count);
-                            }
-                            
-                            // Draw NPCs (Unit 4 + Unit 6 integration)
-                            if npc_instance_count > 0 {
-                                pass.set_vertex_buffer(0, npc_buffer.slice(..));
-                                pass.draw(0..6, 0..npc_instance_count);
-                            }
+                            // TODO: Selection and NPC rendering need separate pipeline
+                            // For now, terrain-only rendering with new mesh system
+                            let _ = selection_count; // Suppress warning
+                            let _ = npc_instance_count; // Suppress warning
                         }
                         
                         queue.submit(std::iter::once(encoder.finish()));
@@ -1687,8 +1791,8 @@ fn main() {
                             println!("║ Player: ({:.1}, {:.1}, {:.1}) | Chunk: ({}, {})",
                                 player.position[0], player.position[1], player.position[2],
                                 player_chunk.x, player_chunk.z);
-                            println!("║ NPCs: {} | Chunks: {} | Instances: {} | Mined: {}",
-                                npcs.len(), stats.loaded_chunks, instance_count + npc_instance_count, blocks_mined);
+                            println!("║ NPCs: {} | Chunks: {} | Triangles: {} | Mined: {}",
+                                npcs.len(), stats.loaded_chunks, index_count / 3, blocks_mined);
                             println!("║ Target: {}", target_str);
                             println!("╚═══════════════════════════════════════════════════════════════╝");
                             last_status = Instant::now();
@@ -1700,7 +1804,6 @@ fn main() {
             
             Event::DeviceEvent { event: DeviceEvent::MouseMotion { delta }, .. } => {
                 if mouse_captured {
-                    let delta_mag = ((delta.0 * delta.0 + delta.1 * delta.1) as f32).sqrt();
                     player.yaw += delta.0 as f32 * MOUSE_SENSITIVITY;
                     player.pitch -= delta.1 as f32 * MOUSE_SENSITIVITY;
                     player.pitch = player.pitch.clamp(-89.0, 89.0);

@@ -3,12 +3,12 @@
 # =============================================================================
 # ARCHITECT'S MANDATE: Feature Separation
 #
-# This crate provides TWO binaries:
-# - `oroboros_client`: Requires GPU, runs on player machines
+# This crate provides MULTIPLE binaries:
+# - `oroboros_client`: Legacy WGPU client (deprecated)
+# - `bevy_client`: NEW Bevy-based client (PRODUCTION)
 # - `oroboros_server`: Headless, runs on German servers
 #
 # RULE: Server must NEVER pull GPU dependencies.
-#       If `cargo build --bin oroboros_server` touches wgpu, YOU'RE FIRED.
 # =============================================================================
 
 [package]
@@ -43,20 +43,76 @@ crossbeam-channel = { workspace = true }
 parking_lot = { workspace = true }
 tracing = { workspace = true }
 
+# WASM support - needed for browser builds
+getrandom = { workspace = true }
+
 # ============================================
-# CLIENT ONLY - GPU and window required
+# BEVY CLIENT (NEW - Production Ready)
 # ============================================
 
-# Unit 2: Rendering (CLIENT ONLY - requires GPU)
+# The Engine - replaces manual WGPU and windowing
+# NOTE: We disable audio (bevy_audio) to avoid ALSA dependency on servers
+# NOTE: No dynamic_linking - conflicts with panic=abort in workspace
+# NOTE: WebGL2 enabled for WASM browser support
+bevy = { version = "0.13", default-features = false, features = [
+    "bevy_asset",
+    "bevy_core_pipeline", 
+    "bevy_pbr",
+    "bevy_render",
+    "bevy_scene",
+    "bevy_sprite",
+    "bevy_text",
+    "bevy_ui",
+    "bevy_winit",
+    "bevy_gizmos",
+    "png",
+    "tonemapping_luts",      # Required for HDR tonemapping
+    "webgl2",                # WASM/Browser support
+    "x11",
+    "wayland",
+], optional = true }
+
+# NOTE: bevy_atmosphere removed - not WASM compatible
+# GLITCH WARS uses void background instead of sky
+
+# FPS camera controller
+bevy_flycam = { version = "0.13", optional = true }
+
+# ENTERPRISE PHYSICS - bevy_xpbd_3d (WASM compatible)
+# Keep default-collider + parry-f32 for Collider support
+# parallel/async disabled by default in 0.4 when not specified
+bevy_xpbd_3d = { version = "0.4.2", default-features = false, features = [
+    "3d",
+    "f32", 
+    "default-collider",    # Required for Collider type
+    "parry-f32",           # Parry physics backend
+    "collider-from-mesh",  # Required for Collider::trimesh_from_mesh
+    "debug-plugin",        # Required for PhysicsDebugPlugin (red lines)
+], optional = true }
+
+# Debug UI
+bevy_egui = { version = "0.27", optional = true }
+
+# Industry standard meshing (kept!)
+block-mesh = { version = "0.2", optional = true }
+
+# ndshape for array indexing
+ndshape = { version = "0.3", optional = true }
+
+# ============================================
+# LEGACY CLIENT (deprecated - keeping for reference)
+# ============================================
+
+# Unit 2: Rendering (LEGACY - requires GPU)
 oroboros_rendering = { path = "../oroboros_rendering", optional = true }
 
-# Window creation (CLIENT ONLY)
+# Window creation (LEGACY)
 winit = { version = "0.29", optional = true }
 
-# GPU (CLIENT ONLY) - for direct window surface creation
+# GPU (LEGACY) - for direct window surface creation
 wgpu = { version = "0.19", optional = true }
 
-# Async runtime helper (CLIENT ONLY)
+# Async runtime helper (LEGACY)
 pollster = { version = "0.3", optional = true }
 
 # ============================================
@@ -72,7 +128,28 @@ oroboros_security = { path = "../oroboros_security", optional = true }
 [features]
 default = []
 
-# Full client with all features
+# NEW: Bevy-based client (PRODUCTION - Native with networking)
+bevy_client = [
+    "dep:bevy",
+    # NOTE: bevy_flycam REMOVED - was causing noclip
+    "dep:bevy_egui",
+    "dep:bevy_xpbd_3d",  # Enterprise physics
+    "dep:block-mesh",
+    "dep:ndshape",
+    "networking",
+    "security",
+]
+
+# GLITCH WARS: WASM build (with physics, no networking)
+bevy_client_wasm = [
+    "dep:bevy",
+    # NOTE: bevy_flycam REMOVED - was causing noclip
+    "dep:bevy_xpbd_3d",  # Enterprise physics (parallel disabled for WASM)
+    "dep:block-mesh",
+    "dep:ndshape",
+]
+
+# LEGACY: Full client with all features (deprecated)
 client = ["rendering", "networking", "security", "dep:winit", "dep:wgpu", "dep:pollster"]
 
 # Full server with all features  
@@ -87,7 +164,19 @@ security = ["dep:oroboros_security"]
 # BINARIES
 # ============================================
 
-# THE CLIENT - Has graphics, runs on player's machine
+# NEW: BEVY CLIENT - Production ready (Native)
+[[bin]]
+name = "bevy_client"
+path = "src/bin/bevy_client.rs"
+required-features = ["bevy_client"]
+
+# GLITCH WARS: WASM build
+[[bin]]
+name = "glitch_wars"
+path = "src/bin/bevy_client.rs"
+required-features = ["bevy_client_wasm"]
+
+# LEGACY CLIENT - Has graphics, runs on player's machine (deprecated)
 [[bin]]
 name = "oroboros_client"
 path = "src/bin/client.rs"
@@ -118,13 +207,23 @@ name = "golden_path_test"
 path = "src/bin/golden_path_test.rs"
 # No required features - core + economy only
 
-# ============================================
-# GAMEPLAY ALPHA - Unit 2 + Unit 4 Joint Mission
-# ============================================
+# LEGACY: GAMEPLAY ALPHA - Unit 2 + Unit 4 Joint Mission
 [[bin]]
 name = "gameplay_alpha"
 path = "src/bin/gameplay_alpha.rs"
 required-features = ["client"]
+
+# =============================================================================
+# WASM TARGET DEPENDENCIES
+# =============================================================================
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# getrandom 0.3 with wasm_js feature (required by some deps)
+getrandom = { version = "0.3", features = ["wasm_js"] }
+uuid = { version = "1.0", features = ["v4", "js"] }
+web-sys = { version = "0.3", features = ["console"] }
+wasm-bindgen = "0.2"
+# Better panic messages in browser console
+console_error_panic_hook = "0.1"
 
 [lints]
 workspace = true

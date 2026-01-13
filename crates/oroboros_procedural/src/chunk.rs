@@ -316,20 +316,20 @@ impl Chunk {
 }
 
 /// Chunk generator using procedural noise.
+/// GLITCH WARS: Arena mode uses flat terrain, forest features unused
+#[allow(dead_code)]
 pub struct ChunkGenerator {
-    /// Biome classifier for terrain generation.
+    /// Biome classifier for terrain generation (unused in Arena mode).
     classifier: BiomeClassifier,
-    /// Detail noise for block variation and tree placement.
+    /// Detail noise for block variation and cover placement.
     detail_noise: SimplexNoise,
     /// Cave noise (reserved for cave generation).
-    #[allow(dead_code)]
     cave_noise: SimplexNoise,
-    /// Tree placement noise (determines where trees spawn).
+    /// Tree placement noise (unused in Arena mode).
     tree_noise: SimplexNoise,
-    /// Sea level (Y coordinate).
+    /// Sea level (Y coordinate, unused in Arena mode).
     sea_level: i32,
     /// World seed for deterministic RNG.
-    #[allow(dead_code)]
     seed: WorldSeed,
 }
 
@@ -337,10 +337,12 @@ impl ChunkGenerator {
     /// Default sea level.
     pub const DEFAULT_SEA_LEVEL: i32 = 64;
     
-    /// Minimum tree height.
+    /// Minimum tree height (unused in Arena mode).
+    #[allow(dead_code)]
     const TREE_MIN_HEIGHT: usize = 4;
     
-    /// Maximum tree height.
+    /// Maximum tree height (unused in Arena mode).
+    #[allow(dead_code)]
     const TREE_MAX_HEIGHT: usize = 6;
 
     /// Creates a new chunk generator.
@@ -364,6 +366,7 @@ impl ChunkGenerator {
     }
 
     /// Generates a chunk at the given coordinates.
+    /// GLITCH WARS UNDERCITY: 3D Caves + Multi-layer terrain
     #[must_use]
     pub fn generate(&self, coord: ChunkCoord) -> Chunk {
         let mut chunk = Chunk::new(coord);
@@ -371,25 +374,219 @@ impl ChunkGenerator {
         let world_x = coord.world_x();
         let world_z = coord.world_z();
 
-        // Pass 1: Generate terrain
+        // UNDERCITY: 3D terrain with caves
         for local_z in 0..CHUNK_SIZE {
             for local_x in 0..CHUNK_SIZE {
                 let block_x = world_x + local_x as i32;
                 let block_z = world_z + local_z as i32;
 
-                self.generate_column(&mut chunk, local_x, local_z, block_x, block_z);
+                self.generate_undercity_column(&mut chunk, local_x, local_z, block_x, block_z);
             }
         }
         
-        // Pass 2: Generate vegetation (trees, plants)
-        self.generate_vegetation(&mut chunk, world_x, world_z);
+        // Carve the Validator Beam (exit point at origin)
+        self.carve_validator_beam(&mut chunk, world_x, world_z);
+        
+        // Spawn loot crystals
+        self.generate_loot_crystals(&mut chunk, world_x, world_z);
 
         chunk
     }
     
+    /// THE UNDERCITY - 3D cave generation with multiple layers
+    /// Creates a "Swiss Cheese" structure with mining tunnels
+    fn generate_undercity_column(
+        &self,
+        chunk: &mut Chunk,
+        local_x: usize,
+        local_z: usize,
+        block_x: i32,
+        block_z: i32,
+    ) {
+        // Configuration
+        const SURFACE_Y: usize = 48;        // Surface level
+        const CAVE_THRESHOLD: f64 = 0.55;   // Higher = fewer caves
+        const TUNNEL_THRESHOLD: f64 = 0.6;  // Horizontal tunnel carving
+        
+        let fx = block_x as f64;
+        let fz = block_z as f64;
+        
+        // Surface height variation using 2D noise
+        let surface_noise = self.detail_noise.sample(fx * 0.02, fz * 0.02);
+        let surface_height = SURFACE_Y + (surface_noise * 8.0) as usize;
+        let surface_height = surface_height.clamp(40, 56);
+        
+        for y in 0..CHUNK_HEIGHT {
+            let fy = y as f64;
+            
+            // 3D Cave noise - creates swiss cheese underground
+            let cave_noise = self.sample_3d_noise(fx * 0.05, fy * 0.08, fz * 0.05);
+            
+            // Horizontal tunnel noise (for mining corridors)
+            let tunnel_noise = self.sample_3d_noise(fx * 0.1, fy * 0.02, fz * 0.1);
+            
+            // Determine if this voxel is a cave
+            let is_cave = cave_noise > CAVE_THRESHOLD || 
+                         (tunnel_noise > TUNNEL_THRESHOLD && y > 5 && y < surface_height - 5);
+            
+            let block = if y == 0 {
+                // Layer 0: Indestructible Bedrock (Obsidian Black)
+                Block::new(5) // ID 5 = Bedrock/Obsidian
+            } else if y < 4 {
+                // Deep layer: Dense bedrock (harder to mine)
+                if is_cave && y > 1 {
+                    Block::AIR
+                } else {
+                    Block::new(5)
+                }
+            } else if y < surface_height {
+                // Underground: Metal/Stone with caves
+                if is_cave {
+                    Block::AIR // Cave
+                } else {
+                    // Different underground materials based on depth
+                    let depth_ratio = (surface_height - y) as f64 / surface_height as f64;
+                    let material_noise = self.detail_noise.sample(fx * 0.2 + fy * 0.1, fz * 0.2);
+                    
+                    if depth_ratio > 0.7 {
+                        // Deep: Dark Metal (ID 2)
+                        Block::new(2)
+                    } else if material_noise > 0.6 {
+                        // Veins of valuable ore (ID 3 = Gold/Crystal)
+                        Block::new(3)
+                    } else {
+                        // Standard: Industrial Metal (ID 2)
+                        Block::new(2)
+                    }
+                }
+            } else if y == surface_height {
+                // Surface layer: The Grid Floor
+                let is_grid_line = (block_x % 8 == 0) || (block_z % 8 == 0);
+                if is_grid_line {
+                    Block::new(3) // Grid lines = Glowing
+                } else {
+                    Block::new(2) // Floor tiles = Dark Metal
+                }
+            } else {
+                // Above surface: Air (The Void)
+                Block::AIR
+            };
+
+            chunk.set_block(local_x, y, local_z, block);
+        }
+
+        // Update height map
+        chunk.height_map[local_z][local_x] = surface_height.min(255) as u8;
+        chunk.set_biome(local_x, local_z, Biome::Desert);
+    }
+    
+    /// 3D Simplex Noise approximation using 2D layers
+    fn sample_3d_noise(&self, x: f64, y: f64, z: f64) -> f64 {
+        // Combine multiple 2D noise samples to simulate 3D
+        let n1 = self.cave_noise.sample(x, z + y * 0.7);
+        let n2 = self.cave_noise.sample(x + y * 0.5, z);
+        let n3 = self.detail_noise.sample(x * 1.5 + y * 0.3, z * 1.5);
+        
+        // Normalize to 0..1
+        ((n1 + n2 + n3) / 3.0 + 1.0) / 2.0
+    }
+    
+    /// Carve the Validator Beam - a clear cylinder at origin
+    /// This is the EXIT POINT where players extract
+    fn carve_validator_beam(&self, chunk: &mut Chunk, world_x: i32, world_z: i32) {
+        const BEAM_RADIUS: i32 = 5;
+        
+        for local_z in 0..CHUNK_SIZE {
+            for local_x in 0..CHUNK_SIZE {
+                let block_x = world_x + local_x as i32;
+                let block_z = world_z + local_z as i32;
+                
+                // Check if within beam radius of origin
+                let dist_sq = block_x * block_x + block_z * block_z;
+                if dist_sq <= BEAM_RADIUS * BEAM_RADIUS {
+                    // Clear vertical column (except bedrock)
+                    for y in 1..CHUNK_HEIGHT {
+                        chunk.set_block(local_x, y, local_z, Block::AIR);
+                    }
+                    // Floor at Y=1 is special "Safe Zone" (ID 4 = Cyan)
+                    chunk.set_block(local_x, 1, local_z, Block::new(4));
+                }
+            }
+        }
+    }
+    
+    /// Generate valuable loot crystals scattered in caves
+    fn generate_loot_crystals(&self, chunk: &mut Chunk, world_x: i32, world_z: i32) {
+        for local_z in 0..CHUNK_SIZE {
+            for local_x in 0..CHUNK_SIZE {
+                let block_x = world_x + local_x as i32;
+                let block_z = world_z + local_z as i32;
+                
+                // Skip near spawn
+                if block_x.abs() < 10 && block_z.abs() < 10 {
+                    continue;
+                }
+                
+                // Use noise for crystal placement
+                let crystal_noise = self.tree_noise.sample(
+                    block_x as f64 * 0.15,
+                    block_z as f64 * 0.15,
+                );
+                
+                if crystal_noise > 0.85 {
+                    // Find a cave floor to place crystal on
+                    for y in 5..45 {
+                        let below = chunk.get_block(local_x, y - 1, local_z);
+                        let current = chunk.get_block(local_x, y, local_z);
+                        let above = chunk.get_block(local_x, y + 1, local_z);
+                        
+                        // If standing on solid ground in a cave
+                        if below.id != 0 && current.id == 0 && above.id == 0 {
+                            // Place glowing crystal (ID 3)
+                            chunk.set_block(local_x, y, local_z, Block::new(3));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // =========================================================================
+    // LEGACY ARENA MODE (kept for reference)
+    // =========================================================================
+    
+    /// Generates a FLAT arena column (LEGACY - replaced by Undercity)
+    #[allow(dead_code)]
+    fn generate_arena_column_legacy(
+        &self,
+        chunk: &mut Chunk,
+        local_x: usize,
+        local_z: usize,
+        block_x: i32,
+        block_z: i32,
+    ) {
+        const FLOOR_Y: usize = 1;
+        
+        for y in 0..CHUNK_HEIGHT {
+            let block = if y == 0 {
+                Block::new(5)
+            } else if y == FLOOR_Y {
+                let is_grid_line = (block_x % 8 == 0) || (block_z % 8 == 0);
+                if is_grid_line { Block::new(3) } else { Block::new(2) }
+            } else {
+                Block::AIR
+            };
+            chunk.set_block(local_x, y, local_z, block);
+        }
+        chunk.height_map[local_z][local_x] = FLOOR_Y as u8;
+    }
+    
     /// Generates vegetation on the chunk (trees, plants).
+    /// UNUSED in Arena mode - kept for future terrain modes.
     ///
     /// Must be called after terrain generation.
+    #[allow(dead_code)]
     fn generate_vegetation(&self, chunk: &mut Chunk, world_x: i32, world_z: i32) {
         // Iterate over all columns
         for local_z in 0..CHUNK_SIZE {
@@ -435,6 +632,8 @@ impl ChunkGenerator {
     }
     
     /// Generates a single tree at the given position.
+    /// UNUSED in Arena mode - kept for future terrain modes.
+    #[allow(dead_code)]
     fn generate_tree(
         &self,
         chunk: &mut Chunk,
@@ -503,7 +702,9 @@ impl ChunkGenerator {
         }
     }
 
-    /// Generates a single column of the chunk.
+    /// Generates a single column of the chunk (Forest mode).
+    /// UNUSED in Arena mode - kept for future terrain modes.
+    #[allow(dead_code)]
     fn generate_column(
         &self,
         chunk: &mut Chunk,

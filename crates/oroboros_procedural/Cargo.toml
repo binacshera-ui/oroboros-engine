@@ -37,6 +37,10 @@ lz4_flex = "0.11"
 # Thread-safe parallel generation
 parking_lot = { workspace = true }
 
+# WASM time polyfill (Instant not available on wasm32-unknown-unknown)
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-time = "1.1"
+
 [dev-dependencies]
 criterion = { workspace = true }
 

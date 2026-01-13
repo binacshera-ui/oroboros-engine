@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GLITCH WARS - The Simulation</title>
+    <style>
+        /* THE VOID - Full Screen */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { 
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: #050505; 
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+        
+        /* LOADING SCREEN */
+        #loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            background: #050505;
+        }
+        
+        .glitch-title {
+            font-size: 48px;
+            font-weight: bold;
+            color: #00FF41;
+            text-shadow: 
+                0 0 10px #00FF41,
+                0 0 20px #00FF41,
+                0 0 40px #00FF41,
+                2px 2px 0 #FF0055,
+                -2px -2px 0 #FFD700;
+            animation: glitch 0.5s infinite;
+            letter-spacing: 8px;
+        }
+        
+        @keyframes glitch {
+            0%, 100% { transform: translate(0); }
+            20% { transform: translate(-2px, 2px); }
+            40% { transform: translate(2px, -2px); }
+            60% { transform: translate(-1px, -1px); }
+            80% { transform: translate(1px, 1px); }
+        }
+        
+        .loading-text {
+            margin-top: 30px;
+            color: #00FF41;
+            font-size: 16px;
+            letter-spacing: 4px;
+            animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        
+        .loading-bar {
+            margin-top: 20px;
+            width: 300px;
+            height: 4px;
+            background: #1a1a1a;
+            border: 1px solid #00FF41;
+            overflow: hidden;
+        }
+        
+        .loading-bar::after {
+            content: '';
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, #00FF41, #FFD700, #FF0055, #00FF41);
+            background-size: 200% 100%;
+            animation: loading 2s linear infinite;
+        }
+        
+        @keyframes loading {
+            0% { background-position: 0% 0%; }
+            100% { background-position: 200% 0%; }
+        }
+        
+        .error {
+            color: #FF0055 !important;
+            text-shadow: 0 0 10px #FF0055 !important;
+        }
+        
+        /* CLICK TO START OVERLAY */
+        #click-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(5, 5, 5, 0.95);
+            display: none; /* Hidden initially, shown after WASM loads */
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1001;
+            cursor: pointer;
+        }
+        
+        .click-prompt {
+            margin-top: 40px;
+            color: #FFD700;
+            font-size: 24px;
+            letter-spacing: 6px;
+            text-shadow: 0 0 10px #FFD700, 0 0 20px #FFD700;
+            animation: blink 1.5s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 50%, 100% { opacity: 1; }
+            25%, 75% { opacity: 0.3; }
+        }
+        
+        .click-subtext {
+            margin-top: 20px;
+            color: #00FF41;
+            font-size: 12px;
+            letter-spacing: 4px;
+            opacity: 0.7;
+        }
+        
+        /* BEVY CANVAS - Full Viewport (FORCE FULL SCREEN) */
+        #bevy {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            min-width: 100vw !important;
+            min-height: 100vh !important;
+            display: block !important;
+            z-index: 0;
+            touch-action: none; /* Prevent touch scrolling */
+            object-fit: cover;
+        }
+        
+        /* SCANLINES OVERLAY */
+        #scanlines {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 999;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(0, 255, 65, 0.03) 2px,
+                rgba(0, 255, 65, 0.03) 4px
+            );
+        }
+        
+        /* HUD */
+        #hud {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            color: #00FF41;
+            font-size: 12px;
+            text-shadow: 0 0 5px #00FF41;
+            z-index: 998;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">
+        <div class="glitch-title">GLITCH WARS</div>
+        <div class="loading-text">INITIALIZING SIMULATION...</div>
+        <div class="loading-bar"></div>
+    </div>
+    
+    <!-- CLICK TO START OVERLAY - Required for Pointer Lock -->
+    <div id="click-overlay">
+        <div class="glitch-title">GLITCH WARS</div>
+        <div class="click-prompt">[ CLICK TO CONNECT ]</div>
+        <div class="click-subtext">WASD - MOVE | MOUSE - LOOK | ESC - UNLOCK</div>
+    </div>
+    
+    <!-- BEVY CANVAS - Required for WASM rendering -->
+    <canvas id="bevy"></canvas>
+    
+    <div id="scanlines"></div>
+    
+    <div id="hud">
+        WASD - MOVE | MOUSE - LOOK | ESC - UNLOCK CURSOR
+    </div>
+    
+    <script type="module">
+        import init from './target/glitch_wars.js';
+        
+        async function run() {
+            const loadingText = document.querySelector('.loading-text');
+            const loadingScreen = document.getElementById('loading');
+            const clickOverlay = document.getElementById('click-overlay');
+            const canvas = document.getElementById('bevy');
+            
+            try {
+                loadingText.textContent = 'LOADING WASM MODULE...';
+                
+                // NOTE: Bevy/wasm-bindgen uses exceptions for control flow
+                // The "Using exceptions for control flow" error is expected and safe to ignore
+                try {
+                    await init();
+                } catch (initError) {
+                    // Check if this is the expected "control flow" exception
+                    if (initError.message && initError.message.includes("exceptions for control flow")) {
+                        console.log("Bevy init completed (control flow exception - this is normal)");
+                    } else {
+                        throw initError; // Re-throw real errors
+                    }
+                }
+                
+                loadingText.textContent = 'READY';
+                
+                // Hide loading, show click-to-start
+                setTimeout(() => {
+                    loadingScreen.style.opacity = '0';
+                    loadingScreen.style.transition = 'opacity 0.5s';
+                    setTimeout(() => {
+                        loadingScreen.style.display = 'none';
+                        // Show click overlay
+                        clickOverlay.style.display = 'flex';
+                    }, 500);
+                }, 300);
+                
+                // CLICK TO START - Hide overlay and focus canvas
+                clickOverlay.addEventListener('click', () => {
+                    clickOverlay.style.opacity = '0';
+                    clickOverlay.style.transition = 'opacity 0.3s';
+                    setTimeout(() => {
+                        clickOverlay.style.display = 'none';
+                    }, 300);
+                    
+                    // Focus canvas for input
+                    if (canvas) {
+                        canvas.focus();
+                    }
+                });
+                
+            } catch (e) {
+                // Only show error for real failures, not control flow exceptions
+                if (e.message && e.message.includes("exceptions for control flow")) {
+                    console.log("Bevy running (control flow exception)");
+                    return;
+                }
+                loadingText.classList.add('error');
+                loadingText.innerHTML = 'SIMULATION FAILED<br><br>' + e.message;
+                console.error('WASM initialization failed:', e);
+            }
+        }
+        
+        run();
+    </script>
+</body>
+</html>

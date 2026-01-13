@@ -30,6 +30,14 @@ raw-window-handle = "0.6"
 # Tracing for performance profiling (zero-cost when disabled)
 tracing = { workspace = true }
 
+# =============================================================================
+# INDUSTRIAL STANDARD MESHING (OPERATION INDUSTRIAL STANDARD)
+# =============================================================================
+# block-mesh: Industry standard greedy meshing library for Rust voxel engines
+# ndshape: N-dimensional array shapes for efficient voxel storage with padding
+block-mesh = "0.2"
+ndshape = "0.3"
+
 [dev-dependencies]
 criterion = { workspace = true }
 

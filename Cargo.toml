@@ -48,6 +48,9 @@ lz4_flex = "0.11"
 rand = { version = "0.8", default-features = false, features = ["std_rng"] }
 rand_chacha = "0.3"
 
+# WASM Support - getrandom with JS backend for browser
+getrandom = { version = "0.3", features = ["wasm_js"] }
+
 # Blockchain - Minimal features only
 alloy-primitives = "0.6"
 alloy-sol-types = "0.6"

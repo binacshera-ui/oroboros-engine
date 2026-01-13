@@ -1,10 +1,10 @@
 // =============================================================================
-// OROBOROS Voxel Instanced Renderer
+// OROBOROS Terrain Vertex Shader
 // =============================================================================
-// SQUAD NEON - GPU-bound voxel rendering
+// INDUSTRIAL STANDARD - Vertex + Index Buffer Rendering
 // 
 // MANDATE: 1 million voxels @ 120 FPS @ 4K
-// CONSTRAINT: Single draw call for all visible geometry
+// METHOD: Standard vertex buffer with indexed drawing
 // =============================================================================
 
 // Camera uniforms
@@ -20,155 +20,125 @@ struct CameraUniforms {
 @group(0) @binding(0)
 var<uniform> camera: CameraUniforms;
 
-// Per-instance data (matches InstanceData struct in Rust)
-struct InstanceInput {
-    @location(5) position_scale: vec4<f32>,
-    @location(6) dimensions_normal_material: vec4<f32>,
-    @location(7) emission: vec4<f32>,
-    @location(8) uv_offset_scale: vec4<f32>,
+// =============================================================================
+// NEW: Standard Vertex Input (matches TerrainVertex in Rust)
+// =============================================================================
+struct VertexInput {
+    @location(0) position: vec3<f32>,      // World position
+    @location(1) normal: vec3<f32>,        // Face normal
+    @location(2) uv: vec2<f32>,            // Texture UV
+    @location(3) material_ao: vec4<f32>,   // [material_id, ao, 0, 0]
 }
 
-// Vertex output
+// Vertex output to fragment shader
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) world_position: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
     @location(3) material_id: f32,
-    @location(4) emission: vec4<f32>,
+    @location(4) ao: f32,
 }
 
-// Normal lookup table (6 directions)
-fn get_normal(index: u32) -> vec3<f32> {
-    switch index {
-        case 0u: { return vec3<f32>(1.0, 0.0, 0.0); }   // +X
-        case 1u: { return vec3<f32>(-1.0, 0.0, 0.0); }  // -X
-        case 2u: { return vec3<f32>(0.0, 1.0, 0.0); }   // +Y
-        case 3u: { return vec3<f32>(0.0, -1.0, 0.0); }  // -Y
-        case 4u: { return vec3<f32>(0.0, 0.0, 1.0); }   // +Z
-        case 5u: { return vec3<f32>(0.0, 0.0, -1.0); }  // -Z
-        default: { return vec3<f32>(0.0, 1.0, 0.0); }
-    }
-}
-
-// Get tangent for UV calculation
-fn get_tangent(normal_index: u32) -> vec3<f32> {
-    switch normal_index {
-        case 0u, 1u: { return vec3<f32>(0.0, 1.0, 0.0); }
-        case 2u, 3u: { return vec3<f32>(1.0, 0.0, 0.0); }
-        case 4u, 5u: { return vec3<f32>(1.0, 0.0, 0.0); }
-        default: { return vec3<f32>(1.0, 0.0, 0.0); }
-    }
-}
-
-fn get_bitangent(normal_index: u32) -> vec3<f32> {
-    switch normal_index {
-        case 0u, 1u: { return vec3<f32>(0.0, 0.0, 1.0); }
-        case 2u, 3u: { return vec3<f32>(0.0, 0.0, 1.0); }
-        case 4u, 5u: { return vec3<f32>(0.0, 1.0, 0.0); }
-        default: { return vec3<f32>(0.0, 1.0, 0.0); }
-    }
-}
-
-// Quad vertices (2 triangles, CCW winding)
-// 0--1
-// |\ |
-// | \|
-// 3--2
-// NOTE: Using switch function instead of const array because WGPU doesn't support
-// runtime indexing of const arrays ("may only be indexed by a constant")
-fn get_quad_vertex(index: u32) -> vec2<f32> {
-    switch index {
-        case 0u: { return vec2<f32>(0.0, 0.0); } // Tri 1: bottom-left
-        case 1u: { return vec2<f32>(1.0, 0.0); } // Tri 1: bottom-right
-        case 2u: { return vec2<f32>(1.0, 1.0); } // Tri 1: top-right
-        case 3u: { return vec2<f32>(0.0, 0.0); } // Tri 2: bottom-left
-        case 4u: { return vec2<f32>(1.0, 1.0); } // Tri 2: top-right
-        case 5u: { return vec2<f32>(0.0, 1.0); } // Tri 2: top-left
-        default: { return vec2<f32>(0.0, 0.0); }
-    }
-}
-
+// =============================================================================
+// NEW: Standard Vertex Shader (draw_indexed compatible)
+// =============================================================================
 @vertex
-fn vs_main(
-    @builtin(vertex_index) vertex_index: u32,
-    instance: InstanceInput,
-) -> VertexOutput {
+fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
     
-    // Extract instance data
-    let position = instance.position_scale.xyz;
-    let scale = instance.position_scale.w;
-    let width = instance.dimensions_normal_material.x;
-    let height = instance.dimensions_normal_material.y;
-    let normal_index = u32(instance.dimensions_normal_material.z);
-    let material_id = instance.dimensions_normal_material.w;
-    
-    // Get basis vectors for this face
-    let normal = get_normal(normal_index);
-    let tangent = get_tangent(normal_index);
-    let bitangent = get_bitangent(normal_index);
-    
-    // Get local vertex position on quad
-    let local_uv = get_quad_vertex(vertex_index);
-    
-    // Scale to quad size
-    let scaled_uv = vec2<f32>(local_uv.x * width, local_uv.y * height);
-    
-    // Calculate world position
-    let world_pos = position + tangent * scaled_uv.x * scale + bitangent * scaled_uv.y * scale;
+    // Direct vertex position - no instance transformation needed
+    let world_pos = in.position;
     
     // Transform to clip space
     out.clip_position = camera.view_proj * vec4<f32>(world_pos, 1.0);
     out.world_position = world_pos;
-    out.normal = normal;
-    out.uv = local_uv * vec2<f32>(width, height);
-    out.material_id = material_id;
-    out.emission = instance.emission;
+    out.normal = in.normal;
+    out.uv = in.uv;
+    out.material_id = in.material_ao.x;
+    out.ao = in.material_ao.y;
     
     return out;
 }
 
-// Material texture atlas
-@group(1) @binding(0)
-var material_texture: texture_2d<f32>;
-@group(1) @binding(1)
-var material_sampler: sampler;
+// =============================================================================
+// NOTE: Texture-based rendering (fs_main) disabled
+// Reason: @group(1) bindings require texture setup in Rust
+// Using fs_solid for now - calculates colors from material_id
+// =============================================================================
 
-// Fragment output (G-Buffer for deferred rendering)
-struct FragmentOutput {
-    @location(0) albedo: vec4<f32>,      // RGB + roughness
-    @location(1) normal: vec4<f32>,       // RGB normal + metallic
-    @location(2) emission: vec4<f32>,     // RGB emission + intensity
-}
+// =============================================================================
+// SOLID COLOR SHADER - INDUSTRIAL STANDARD
+// =============================================================================
+// Uses material_id from vertex buffer to determine color
+// AO comes from vertex data (calculated by block-mesh-rs)
 
 @fragment
-fn fs_main(in: VertexOutput) -> FragmentOutput {
-    var out: FragmentOutput;
+fn fs_solid(in: VertexOutput) -> @location(0) vec4<f32> {
+    let mat_id = u32(in.material_id);
     
-    // Sample material from atlas (16x16 grid of 16x16 tiles)
-    let atlas_size = 256.0;
-    let tile_size = 16.0;
-    let tiles_per_row = atlas_size / tile_size;
+    // Forest Palette Colors based on material_id
+    var material_color = vec3<f32>(0.5, 0.5, 0.5); // Default gray
     
-    let material_x = f32(u32(in.material_id) % u32(tiles_per_row));
-    let material_y = f32(u32(in.material_id) / u32(tiles_per_row));
+    if mat_id == 1u { // Grass
+        material_color = vec3<f32>(0.22, 0.55, 0.18);
+    } else if mat_id == 2u { // Dirt
+        material_color = vec3<f32>(0.45, 0.30, 0.15);
+    } else if mat_id == 3u { // Stone
+        material_color = vec3<f32>(0.40, 0.40, 0.42);
+    } else if mat_id == 4u { // Bedrock
+        material_color = vec3<f32>(0.18, 0.18, 0.20);
+    } else if mat_id == 5u { // Sand
+        material_color = vec3<f32>(0.76, 0.70, 0.50);
+    } else if mat_id == 6u { // Water
+        material_color = vec3<f32>(0.20, 0.40, 0.70);
+    } else if mat_id == 7u { // Neon
+        // Emission handled below
+        material_color = vec3<f32>(1.0, 0.2, 0.8);
+    }
     
-    let tile_uv = fract(in.uv) * (tile_size / atlas_size);
-    let atlas_uv = vec2<f32>(material_x, material_y) / tiles_per_row + tile_uv;
+    // Simple directional lighting (sun from upper-right)
+    let light_dir = normalize(vec3<f32>(0.4, 0.75, 0.35));
+    let ndotl = max(dot(in.normal, light_dir), 0.0);
     
-    var albedo = textureSample(material_texture, material_sampler, atlas_uv);
+    // Ambient + diffuse
+    let ambient = 0.35;
+    let diffuse = 0.65 * ndotl;
+    var lit_color = material_color * (ambient + diffuse);
     
-    // Apply voxel-style shading (subtle face-based ambient occlusion)
-    let ao = select(1.0, 0.8, abs(in.normal.y) < 0.5);
-    albedo = vec4<f32>(albedo.rgb * ao, albedo.a);
+    // Face-based shading (top faces brighter)
+    var face_factor = 1.0;
+    if in.normal.y > 0.5 {
+        face_factor = 1.15; // Top face - brightest (sun overhead)
+    } else if in.normal.y < -0.5 {
+        face_factor = 0.55; // Bottom face - darkest (shadow)
+    } else if abs(in.normal.x) > 0.5 {
+        face_factor = 0.80; // East/West faces
+    } else {
+        face_factor = 0.70; // North/South faces
+    }
     
-    // Pack output
-    out.albedo = vec4<f32>(albedo.rgb, 0.5); // Default roughness 0.5
-    out.normal = vec4<f32>(in.normal * 0.5 + 0.5, 0.0); // Packed normal + metallic
-    out.emission = in.emission;
+    // Apply vertex AO from block-mesh-rs (0 = dark, 1 = bright)
+    let vertex_ao = clamp(in.ao, 0.3, 1.0);
     
-    return out;
+    // Combined lighting
+    var final_color = lit_color * face_factor * vertex_ao;
+    
+    // Emission for neon blocks
+    if mat_id == 7u {
+        final_color = material_color * 2.0; // Glow
+    }
+    
+    // Distance fog
+    let camera_dist = length(in.world_position - camera.camera_pos.xyz);
+    let fog_start = 50.0;
+    let fog_end = camera.camera_params.y * 0.9; // 90% of far plane
+    let fog_factor = clamp((camera_dist - fog_start) / (fog_end - fog_start), 0.0, 1.0);
+    let fog_color = vec3<f32>(0.55, 0.65, 0.82); // Soft sky blue
+    
+    final_color = mix(final_color, fog_color, fog_factor * 0.75);
+    
+    return vec4<f32>(final_color, 1.0);
 }
 
 // =============================================================================
