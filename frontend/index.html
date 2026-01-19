@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0a0a0f" />
+    <meta name="description" content="GLITCH WARS - A Multiplayer Web3 Voxel Game" />
+    <title>GLITCH WARS - The Simulation</title>
+    
+    <style>
+      /* Prevent flash of unstyled content */
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #050508;
+      }
+      
+      #root {
+        width: 100%;
+        height: 100%;
+      }
+      
+      /* Bevy canvas - positioned behind React UI */
+      #bevy {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        z-index: 0 !important;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Bevy Game Canvas - WASM will render here -->
+    <canvas id="bevy" width="1920" height="1080" tabindex="0"></canvas>
+    
+    <!-- React UI Overlay -->
+    <div id="root"></div>
+    
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

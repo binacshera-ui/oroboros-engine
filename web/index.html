@@ -4,208 +4,349 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GLITCH WARS - The Simulation</title>
-    <style>
-        /* THE VOID - Full Screen */
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body { 
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            background: #050505; 
-            overflow: hidden;
-            font-family: 'Courier New', monospace;
-        }
-        
-        /* LOADING SCREEN */
-        #loading {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-            background: #050505;
-        }
-        
-        .glitch-title {
-            font-size: 48px;
-            font-weight: bold;
-            color: #00FF41;
-            text-shadow: 
-                0 0 10px #00FF41,
-                0 0 20px #00FF41,
-                0 0 40px #00FF41,
-                2px 2px 0 #FF0055,
-                -2px -2px 0 #FFD700;
-            animation: glitch 0.5s infinite;
-            letter-spacing: 8px;
-        }
-        
-        @keyframes glitch {
-            0%, 100% { transform: translate(0); }
-            20% { transform: translate(-2px, 2px); }
-            40% { transform: translate(2px, -2px); }
-            60% { transform: translate(-1px, -1px); }
-            80% { transform: translate(1px, 1px); }
-        }
-        
-        .loading-text {
-            margin-top: 30px;
-            color: #00FF41;
-            font-size: 16px;
-            letter-spacing: 4px;
-            animation: pulse 1s infinite;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.3; }
-        }
-        
-        .loading-bar {
-            margin-top: 20px;
-            width: 300px;
-            height: 4px;
-            background: #1a1a1a;
-            border: 1px solid #00FF41;
-            overflow: hidden;
-        }
-        
-        .loading-bar::after {
-            content: '';
-            display: block;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, #00FF41, #FFD700, #FF0055, #00FF41);
-            background-size: 200% 100%;
-            animation: loading 2s linear infinite;
-        }
-        
-        @keyframes loading {
-            0% { background-position: 0% 0%; }
-            100% { background-position: 200% 0%; }
-        }
-        
-        .error {
-            color: #FF0055 !important;
-            text-shadow: 0 0 10px #FF0055 !important;
-        }
-        
-        /* CLICK TO START OVERLAY */
-        #click-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(5, 5, 5, 0.95);
-            display: none; /* Hidden initially, shown after WASM loads */
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 1001;
-            cursor: pointer;
-        }
-        
-        .click-prompt {
-            margin-top: 40px;
-            color: #FFD700;
-            font-size: 24px;
-            letter-spacing: 6px;
-            text-shadow: 0 0 10px #FFD700, 0 0 20px #FFD700;
-            animation: blink 1.5s infinite;
-        }
-        
-        @keyframes blink {
-            0%, 50%, 100% { opacity: 1; }
-            25%, 75% { opacity: 0.3; }
-        }
-        
-        .click-subtext {
-            margin-top: 20px;
-            color: #00FF41;
-            font-size: 12px;
-            letter-spacing: 4px;
-            opacity: 0.7;
-        }
-        
-        /* BEVY CANVAS - Full Viewport (FORCE FULL SCREEN) */
-        #bevy {
-            position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100vw !important;
-            height: 100vh !important;
-            min-width: 100vw !important;
-            min-height: 100vh !important;
-            display: block !important;
-            z-index: 0;
-            touch-action: none; /* Prevent touch scrolling */
-            object-fit: cover;
-        }
-        
-        /* SCANLINES OVERLAY */
-        #scanlines {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 999;
-            background: repeating-linear-gradient(
-                0deg,
-                transparent,
-                transparent 2px,
-                rgba(0, 255, 65, 0.03) 2px,
-                rgba(0, 255, 65, 0.03) 4px
-            );
-        }
-        
-        /* HUD */
-        #hud {
-            position: fixed;
-            top: 10px;
-            left: 10px;
-            color: #00FF41;
-            font-size: 12px;
-            text-shadow: 0 0 5px #00FF41;
-            z-index: 998;
-            pointer-events: none;
-        }
-    </style>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <!-- LOADING SCREEN -->
     <div id="loading">
         <div class="glitch-title">GLITCH WARS</div>
         <div class="loading-text">INITIALIZING SIMULATION...</div>
         <div class="loading-bar"></div>
     </div>
     
-    <!-- CLICK TO START OVERLAY - Required for Pointer Lock -->
+    <!-- CLICK TO START OVERLAY -->
     <div id="click-overlay">
         <div class="glitch-title">GLITCH WARS</div>
         <div class="click-prompt">[ CLICK TO CONNECT ]</div>
-        <div class="click-subtext">WASD - MOVE | MOUSE - LOOK | ESC - UNLOCK</div>
+        <div class="click-subtext">WASD - MOVE | MOUSE - LOOK | SPACE - JUMP | ESC - UNLOCK</div>
     </div>
     
-    <!-- BEVY CANVAS - Required for WASM rendering -->
+    <!-- BEVY CANVAS -->
     <canvas id="bevy"></canvas>
     
+    <!-- SCANLINES OVERLAY -->
     <div id="scanlines"></div>
     
-    <div id="hud">
-        WASD - MOVE | MOUSE - LOOK | ESC - UNLOCK CURSOR
+    <!-- ============================================================ -->
+    <!-- FINANCIAL HUD - Web3 Ready Dashboard                         -->
+    <!-- ============================================================ -->
+    
+    <!-- TOP RIGHT: Wallet & Balance -->
+    <div id="hud-wallet" class="hud-panel hud-top-right">
+        <div class="hud-row">
+            <span class="hud-label">WALLET</span>
+            <span id="wallet-address" class="hud-value wallet">0x7F3a...8b2C</span>
+            <span class="hud-status disconnected" id="wallet-status">●</span>
+        </div>
+        <div class="hud-row">
+            <span class="hud-label">BALANCE</span>
+            <span id="balance-value" class="hud-value money">$0.00</span>
+        </div>
+        <div class="hud-row">
+            <span class="hud-label">LOOT</span>
+            <span id="loot-count" class="hud-value gold">0</span>
+        </div>
     </div>
     
+    <!-- TOP CENTER: Risk Amount (Staked Value at Risk) -->
+    <div id="hud-risk" class="hud-panel hud-top-center">
+        <div class="risk-header">
+            <span class="risk-icon">⚠</span>
+            <span class="risk-label">RISK EXPOSURE</span>
+            <span class="risk-icon">⚠</span>
+        </div>
+        <div id="risk-amount" class="risk-value">$0.00</div>
+        <div class="risk-bar">
+            <div id="risk-fill" class="risk-fill" style="width: 0%"></div>
+        </div>
+        <div class="risk-subtext">VALUE AT STAKE</div>
+    </div>
+    
+    <!-- TOP LEFT: Server Status & Players -->
+    <div id="hud-server" class="hud-panel hud-top-left">
+        <div class="hud-row">
+            <span class="hud-label">SERVER</span>
+            <span id="server-status" class="hud-value status-disconnected">OFFLINE</span>
+        </div>
+        <div class="hud-row">
+            <span class="hud-label">PLAYERS</span>
+            <span id="player-count" class="hud-value">1</span>
+        </div>
+        <div class="hud-row">
+            <span class="hud-label">PING</span>
+            <span id="ping-value" class="hud-value">--ms</span>
+        </div>
+    </div>
+    
+    <!-- BOTTOM CENTER: Energy Bar -->
+    <div id="hud-energy" class="hud-panel hud-bottom-center">
+        <div class="energy-container">
+            <span class="energy-label">ENERGY</span>
+            <div class="energy-bar">
+                <div id="energy-fill" class="energy-fill"></div>
+                <div class="energy-segments"></div>
+            </div>
+            <span id="energy-percent" class="energy-percent">100%</span>
+        </div>
+    </div>
+    
+    <!-- BOTTOM LEFT: Coordinates & Speed -->
+    <div id="hud-position" class="hud-panel hud-bottom-left">
+        <div class="coord-row">
+            <span class="coord-label">X:</span>
+            <span id="pos-x" class="coord-value">0.00</span>
+        </div>
+        <div class="coord-row">
+            <span class="coord-label">Y:</span>
+            <span id="pos-y" class="coord-value">0.00</span>
+        </div>
+        <div class="coord-row">
+            <span class="coord-label">Z:</span>
+            <span id="pos-z" class="coord-value">0.00</span>
+        </div>
+    </div>
+    
+    <!-- KILL FEED / NOTIFICATIONS (Bottom Right) -->
+    <div id="hud-notifications" class="hud-panel hud-bottom-right">
+        <div id="notification-list">
+            <!-- Notifications appear here -->
+        </div>
+    </div>
+    
+    <!-- ============================================================ -->
+    <!-- GAME SCRIPTS                                                 -->
+    <!-- ============================================================ -->
     <script type="module">
         import init from './target/glitch_wars.js';
         
+        // ============================================================
+        // GLOBAL HUD STATE
+        // ============================================================
+        window.glitchWarsHUD = {
+            balance: 0,
+            risk: 0,
+            energy: 100,
+            loot: 0,
+            connected: false,
+            players: 1,
+            ping: 0,
+            position: { x: 0, y: 0, z: 0 }
+        };
+        
+        // ============================================================
+        // HUD UPDATE FUNCTIONS (Callable from Rust/WASM)
+        // ============================================================
+        
+        /**
+         * Update wallet balance display
+         * @param {number} val - New balance value
+         */
+        window.updateBalance = function(val) {
+            window.glitchWarsHUD.balance = val;
+            const el = document.getElementById('balance-value');
+            if (el) {
+                el.textContent = '$' + val.toFixed(2);
+                el.classList.add('flash');
+                setTimeout(() => el.classList.remove('flash'), 300);
+            }
+        };
+        
+        /**
+         * Update risk exposure display
+         * @param {number} val - Risk amount (money at stake)
+         */
+        window.updateRisk = function(val) {
+            window.glitchWarsHUD.risk = val;
+            const el = document.getElementById('risk-amount');
+            const fill = document.getElementById('risk-fill');
+            if (el) {
+                el.textContent = '$' + val.toFixed(2);
+                // Color based on risk level
+                if (val > 1000) {
+                    el.className = 'risk-value risk-critical';
+                } else if (val > 500) {
+                    el.className = 'risk-value risk-high';
+                } else if (val > 100) {
+                    el.className = 'risk-value risk-medium';
+                } else {
+                    el.className = 'risk-value';
+                }
+            }
+            if (fill) {
+                // Max risk bar at $2000
+                const percent = Math.min((val / 2000) * 100, 100);
+                fill.style.width = percent + '%';
+            }
+        };
+        
+        /**
+         * Update energy bar
+         * @param {number} val - Energy percentage (0-100)
+         */
+        window.updateEnergy = function(val) {
+            window.glitchWarsHUD.energy = val;
+            const fill = document.getElementById('energy-fill');
+            const percent = document.getElementById('energy-percent');
+            if (fill) {
+                fill.style.width = val + '%';
+                // Color based on energy level
+                if (val > 60) {
+                    fill.className = 'energy-fill energy-high';
+                } else if (val > 30) {
+                    fill.className = 'energy-fill energy-medium';
+                } else {
+                    fill.className = 'energy-fill energy-low';
+                }
+            }
+            if (percent) {
+                percent.textContent = Math.round(val) + '%';
+            }
+        };
+        
+        /**
+         * Update loot count
+         * @param {number} val - Number of loot items collected
+         */
+        window.updateLoot = function(val) {
+            window.glitchWarsHUD.loot = val;
+            const el = document.getElementById('loot-count');
+            if (el) {
+                el.textContent = val;
+                el.classList.add('flash-gold');
+                setTimeout(() => el.classList.remove('flash-gold'), 500);
+            }
+        };
+        
+        /**
+         * Update player position display
+         * @param {number} x - X coordinate
+         * @param {number} y - Y coordinate
+         * @param {number} z - Z coordinate
+         */
+        window.updatePosition = function(x, y, z) {
+            window.glitchWarsHUD.position = { x, y, z };
+            const elX = document.getElementById('pos-x');
+            const elY = document.getElementById('pos-y');
+            const elZ = document.getElementById('pos-z');
+            if (elX) elX.textContent = x.toFixed(2);
+            if (elY) elY.textContent = y.toFixed(2);
+            if (elZ) elZ.textContent = z.toFixed(2);
+        };
+        
+        /**
+         * Update server connection status
+         * @param {boolean} connected - Connection state
+         * @param {number} playerCount - Number of players online
+         * @param {number} ping - Latency in ms
+         */
+        window.updateServerStatus = function(connected, playerCount, ping) {
+            window.glitchWarsHUD.connected = connected;
+            window.glitchWarsHUD.players = playerCount;
+            window.glitchWarsHUD.ping = ping;
+            
+            const statusEl = document.getElementById('server-status');
+            const playersEl = document.getElementById('player-count');
+            const pingEl = document.getElementById('ping-value');
+            
+            if (statusEl) {
+                if (connected) {
+                    statusEl.textContent = 'ONLINE';
+                    statusEl.className = 'hud-value status-connected';
+                } else {
+                    statusEl.textContent = 'OFFLINE';
+                    statusEl.className = 'hud-value status-disconnected';
+                }
+            }
+            if (playersEl) playersEl.textContent = playerCount;
+            if (pingEl) pingEl.textContent = ping + 'ms';
+        };
+        
+        /**
+         * Update wallet connection status
+         * @param {string} address - Wallet address (shortened)
+         * @param {boolean} connected - Connection state
+         */
+        window.updateWallet = function(address, connected) {
+            const addrEl = document.getElementById('wallet-address');
+            const statusEl = document.getElementById('wallet-status');
+            if (addrEl) addrEl.textContent = address;
+            if (statusEl) {
+                statusEl.className = connected ? 'hud-status connected' : 'hud-status disconnected';
+            }
+        };
+        
+        /**
+         * Add a notification to the feed
+         * @param {string} message - Notification text
+         * @param {string} type - Type: 'info', 'warning', 'danger', 'gold'
+         */
+        window.addNotification = function(message, type = 'info') {
+            const list = document.getElementById('notification-list');
+            if (!list) return;
+            
+            const notif = document.createElement('div');
+            notif.className = 'notification notification-' + type;
+            notif.textContent = message;
+            
+            list.insertBefore(notif, list.firstChild);
+            
+            // Remove after 5 seconds
+            setTimeout(() => {
+                notif.classList.add('notification-fade');
+                setTimeout(() => notif.remove(), 500);
+            }, 5000);
+            
+            // Keep only last 5 notifications
+            while (list.children.length > 5) {
+                list.removeChild(list.lastChild);
+            }
+        };
+        
+        // ============================================================
+        // DEMO: Simulate HUD updates for testing
+        // ============================================================
+        function startDemoUpdates() {
+            // Simulate balance increasing
+            let demoBalance = 0;
+            let demoRisk = 0;
+            let demoEnergy = 100;
+            let demoLoot = 0;
+            
+            setInterval(() => {
+                // Random balance fluctuation
+                demoBalance += (Math.random() - 0.3) * 10;
+                demoBalance = Math.max(0, demoBalance);
+                updateBalance(demoBalance);
+                
+                // Risk increases as you play
+                demoRisk += Math.random() * 5;
+                if (demoRisk > 2000) demoRisk = 0; // Reset
+                updateRisk(demoRisk);
+            }, 2000);
+            
+            // Energy depletes slowly
+            setInterval(() => {
+                demoEnergy -= 0.5;
+                if (demoEnergy < 10) demoEnergy = 100; // Recharge
+                updateEnergy(demoEnergy);
+            }, 500);
+            
+            // Occasional loot pickup
+            setInterval(() => {
+                if (Math.random() > 0.7) {
+                    demoLoot++;
+                    updateLoot(demoLoot);
+                    addNotification('+1 GOLD COLLECTED', 'gold');
+                }
+            }, 3000);
+            
+            // Connection status
+            updateServerStatus(false, 1, 0);
+        }
+        
+        // ============================================================
+        // MAIN INITIALIZATION
+        // ============================================================
         async function run() {
             const loadingText = document.querySelector('.loading-text');
             const loadingScreen = document.getElementById('loading');
@@ -215,16 +356,13 @@
             try {
                 loadingText.textContent = 'LOADING WASM MODULE...';
                 
-                // NOTE: Bevy/wasm-bindgen uses exceptions for control flow
-                // The "Using exceptions for control flow" error is expected and safe to ignore
                 try {
                     await init();
                 } catch (initError) {
-                    // Check if this is the expected "control flow" exception
                     if (initError.message && initError.message.includes("exceptions for control flow")) {
                         console.log("Bevy init completed (control flow exception - this is normal)");
                     } else {
-                        throw initError; // Re-throw real errors
+                        throw initError;
                     }
                 }
                 
@@ -236,27 +374,25 @@
                     loadingScreen.style.transition = 'opacity 0.5s';
                     setTimeout(() => {
                         loadingScreen.style.display = 'none';
-                        // Show click overlay
                         clickOverlay.style.display = 'flex';
                     }, 500);
                 }, 300);
                 
-                // CLICK TO START - Hide overlay and focus canvas
+                // Click to start
                 clickOverlay.addEventListener('click', () => {
                     clickOverlay.style.opacity = '0';
                     clickOverlay.style.transition = 'opacity 0.3s';
                     setTimeout(() => {
                         clickOverlay.style.display = 'none';
+                        // Start demo updates
+                        startDemoUpdates();
+                        addNotification('CONNECTED TO THE SIMULATION', 'info');
                     }, 300);
                     
-                    // Focus canvas for input
-                    if (canvas) {
-                        canvas.focus();
-                    }
+                    if (canvas) canvas.focus();
                 });
                 
             } catch (e) {
-                // Only show error for real failures, not control flow exceptions
                 if (e.message && e.message.includes("exceptions for control flow")) {
                     console.log("Bevy running (control flow exception)");
                     return;

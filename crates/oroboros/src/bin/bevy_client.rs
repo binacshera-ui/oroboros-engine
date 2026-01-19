@@ -13,6 +13,7 @@ use bevy::render::mesh::{Indices, PrimitiveTopology};
 use bevy::render::render_asset::RenderAssetUsages;
 use bevy::core_pipeline::bloom::BloomSettings;
 use bevy::core_pipeline::tonemapping::Tonemapping;
+use bevy::pbr::FogSettings;
 
 // ENTERPRISE PHYSICS
 use bevy_xpbd_3d::prelude::*;
@@ -25,6 +26,699 @@ use oroboros_procedural::{WorldManager, WorldManagerConfig, WorldSeed, ChunkCoor
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
+
+// =============================================================================
+// MULTIPLAYER NETWORKING (WASM WebSocket)
+// =============================================================================
+
+// WASM-specific networking uses thread_local for WebSocket (not Send/Sync)
+#[cfg(target_arch = "wasm32")]
+mod networking {
+    use wasm_bindgen::prelude::*;
+    use wasm_bindgen::JsCast;
+    use web_sys::{WebSocket, MessageEvent, CloseEvent, ErrorEvent};
+    use std::sync::{Arc, Mutex};
+    use std::collections::HashMap;
+    use std::cell::RefCell;
+    use bevy::prelude::*;
+    
+    /// Server URL - configurable
+    pub const SERVER_URL: &str = "ws://162.55.2.222:3000";
+    
+    // Thread-local storage for WebSocket (not Send/Sync safe)
+    thread_local! {
+        static WEBSOCKET: RefCell<Option<WebSocket>> = RefCell::new(None);
+    }
+    
+    /// Remote player data from server (with interpolation target)
+    #[derive(Clone, Debug, Default)]
+    #[allow(dead_code)]
+    pub struct RemotePlayer {
+        pub id: String,
+        pub x: f32,
+        pub y: f32,
+        pub z: f32,
+        pub yaw: f32,
+        pub balance: u32,
+        pub energy: f32,
+        // Interpolation: previous position for smooth movement
+        pub prev_x: f32,
+        pub prev_y: f32,
+        pub prev_z: f32,
+        pub interp_t: f32, // 0.0 to 1.0
+    }
+    
+    /// Network state resource (Send + Sync safe)
+    #[derive(Resource, Default)]
+    pub struct NetworkState {
+        pub connected: bool,
+        pub my_id: Option<String>,
+        pub player_count: u32,
+        pub ping_ms: u32,
+        pub server_tick: u32,
+        pub my_balance: u32,
+        pub my_energy: f32,
+        pub remote_players: Arc<Mutex<HashMap<String, RemotePlayer>>>,
+    }
+    
+    // Static message queue for cross-callback communication
+    static MESSAGE_QUEUE: Mutex<Vec<String>> = Mutex::new(Vec::new());
+    
+    impl NetworkState {
+        /// Connect to the authoritative game server
+        pub fn connect(&mut self) {
+            web_sys::console::log_1(&format!("[NET] Connecting to {}...", SERVER_URL).into());
+            
+            let ws = match WebSocket::new(SERVER_URL) {
+                Ok(ws) => ws,
+                Err(e) => {
+                    web_sys::console::error_1(&format!("[NET] WebSocket creation failed: {:?}", e).into());
+                    return;
+                }
+            };
+            
+            ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
+            
+            // On message - push to static queue
+            let onmessage_callback = Closure::<dyn FnMut(_)>::new(move |e: MessageEvent| {
+                if let Ok(txt) = e.data().dyn_into::<js_sys::JsString>() {
+                    let msg_str: String = txt.into();
+                    if let Ok(mut queue) = MESSAGE_QUEUE.lock() {
+                        queue.push(msg_str);
+                    }
+                }
+            });
+            ws.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
+            onmessage_callback.forget();
+            
+            // On open - send LOGIN immediately
+            let onopen_callback = Closure::<dyn FnMut()>::new(move || {
+                web_sys::console::log_1(&"[NET] ✓ WebSocket connected! Sending LOGIN...".into());
+                let _ = js_sys::eval("if(window.updateServerStatus) updateServerStatus(true, 1, 0);");
+                let _ = js_sys::eval("if(window.addNotification) addNotification('CONNECTED - AUTHENTICATING...', 'info');");
+                
+                // ================================================================
+                // QA TEST: Randomize wallet prefix (50% whale, 50% noob)
+                // ================================================================
+                let random_val = js_sys::Math::random();
+                let mock_wallet = if random_val < 0.5 {
+                    // WHALE - will get $5000, WHALE tier
+                    let suffix = format!("{:032x}", js_sys::Date::now() as u64);
+                    format!("0xwhale{}", &suffix[..34])
+                } else {
+                    // NOOB - will get $50, FREE tier
+                    let suffix = format!("{:032x}", js_sys::Date::now() as u64);
+                    format!("0xnoob0{}", &suffix[..33])
+                };
+                
+                let login_msg = format!(r#"{{"type":"LOGIN","wallet":"{}"}}"#, mock_wallet);
+                
+                // Huge log for QA
+                web_sys::console::log_1(&"╔══════════════════════════════════════════════════════════════╗".into());
+                web_sys::console::log_1(&"║               GLITCH WARS - LOGIN ATTEMPT                   ║".into());
+                web_sys::console::log_1(&"╠══════════════════════════════════════════════════════════════╣".into());
+                web_sys::console::log_1(&format!("║  Wallet: {}  ║", &mock_wallet).into());
+                web_sys::console::log_1(&format!("║  Type: {} (random={:.2})                               ║", 
+                    if random_val < 0.5 { "WHALE 🐋" } else { "NOOB  🆓" }, random_val).into());
+                web_sys::console::log_1(&"╚══════════════════════════════════════════════════════════════╝".into());
+                
+                // Send LOGIN via thread-local websocket
+                WEBSOCKET.with(|ws_cell| {
+                    if let Some(ws) = ws_cell.borrow().as_ref() {
+                        if ws.ready_state() == WebSocket::OPEN {
+                            let _ = ws.send_with_str(&login_msg);
+                        }
+                    }
+                });
+            });
+            ws.set_onopen(Some(onopen_callback.as_ref().unchecked_ref()));
+            onopen_callback.forget();
+            
+            // On close
+            let onclose_callback = Closure::<dyn FnMut(_)>::new(move |e: CloseEvent| {
+                web_sys::console::log_1(&format!("[NET] Disconnected: code={} reason={}", e.code(), e.reason()).into());
+                let _ = js_sys::eval("if(window.updateServerStatus) updateServerStatus(false, 0, 0);");
+                let _ = js_sys::eval("if(window.addNotification) addNotification('DISCONNECTED FROM SERVER', 'danger');");
+            });
+            ws.set_onclose(Some(onclose_callback.as_ref().unchecked_ref()));
+            onclose_callback.forget();
+            
+            // On error
+            let onerror_callback = Closure::<dyn FnMut(_)>::new(move |_e: ErrorEvent| {
+                web_sys::console::error_1(&"[NET] ✗ WebSocket error".into());
+            });
+            ws.set_onerror(Some(onerror_callback.as_ref().unchecked_ref()));
+            onerror_callback.forget();
+            
+            // Store in thread-local
+            WEBSOCKET.with(|ws_cell| {
+                *ws_cell.borrow_mut() = Some(ws);
+            });
+        }
+        
+        /// Send INPUT message (position update to authoritative server)
+        pub fn send_input(&self, x: f32, y: f32, z: f32, yaw: f32) {
+            let msg = format!(r#"{{"type":"INPUT","x":{},"y":{},"z":{},"yaw":{}}}"#, x, y, z, yaw);
+            WEBSOCKET.with(|ws_cell| {
+                if let Some(ws) = ws_cell.borrow().as_ref() {
+                    if ws.ready_state() == WebSocket::OPEN {
+                        let _ = ws.send_with_str(&msg);
+                    }
+                }
+            });
+        }
+        
+        /// Send MINE_BLOCK action (used when breaking blocks for economy)
+        #[allow(dead_code)]
+        pub fn send_mine_block(&self, block_x: i32, block_y: i32, block_z: i32) {
+            let msg = format!(r#"{{"type":"MINE_BLOCK","blockX":{},"blockY":{},"blockZ":{}}}"#, block_x, block_y, block_z);
+            WEBSOCKET.with(|ws_cell| {
+                if let Some(ws) = ws_cell.borrow().as_ref() {
+                    if ws.ready_state() == WebSocket::OPEN {
+                        let _ = ws.send_with_str(&msg);
+                    }
+                }
+            });
+        }
+        
+        /// Send PING for latency measurement
+        pub fn send_ping(&self) {
+            let now = js_sys::Date::now();
+            let msg = format!(r#"{{"type":"PING","timestamp":{}}}"#, now as u64);
+            WEBSOCKET.with(|ws_cell| {
+                if let Some(ws) = ws_cell.borrow().as_ref() {
+                    if ws.ready_state() == WebSocket::OPEN {
+                        let _ = ws.send_with_str(&msg);
+                    }
+                }
+            });
+        }
+        
+        /// Process received messages from authoritative server
+        pub fn process_messages(&mut self) {
+            let messages: Vec<String> = {
+                let mut queue = MESSAGE_QUEUE.lock().unwrap();
+                queue.drain(..).collect()
+            };
+            
+            for msg_str in messages {
+                // Parse message type - new multi-room protocol
+                if msg_str.contains(r#""type":"CONNECTED""#) {
+                    web_sys::console::log_1(&"[NET] Received CONNECTED, awaiting LOGIN response...".into());
+                } else if msg_str.contains(r#""type":"ROOM_JOINED""#) {
+                    self.handle_room_joined(&msg_str);
+                } else if msg_str.contains(r#""type":"WELCOME""#) {
+                    self.handle_welcome(&msg_str);
+                } else if msg_str.contains(r#""type":"STATE""#) {
+                    self.handle_state(&msg_str);
+                } else if msg_str.contains(r#""type":"PLAYER_JOINED""#) {
+                    self.handle_player_join(&msg_str);
+                } else if msg_str.contains(r#""type":"PLAYER_LEFT""#) {
+                    self.handle_player_leave(&msg_str);
+                } else if msg_str.contains(r#""type":"MINE_SUCCESS""#) {
+                    self.handle_mine_success(&msg_str);
+                } else if msg_str.contains(r#""type":"BALANCE_UPDATE""#) {
+                    self.handle_balance_update(&msg_str);
+                } else if msg_str.contains(r#""type":"POSITION_CORRECTION""#) {
+                    self.handle_position_correction(&msg_str);
+                } else if msg_str.contains(r#""type":"PONG""#) {
+                    self.handle_pong(&msg_str);
+                } else if msg_str.contains(r#""type":"LOGIN_FAILED""#) {
+                    self.handle_login_failed(&msg_str);
+                }
+            }
+            
+            // Update HUD with current state
+            let _ = js_sys::eval(&format!(
+                "if(window.updateServerStatus) updateServerStatus({}, {}, {});",
+                self.connected, self.player_count, self.ping_ms
+            ));
+            let _ = js_sys::eval(&format!(
+                "if(window.updateBalance) updateBalance({});",
+                self.my_balance
+            ));
+            let _ = js_sys::eval(&format!(
+                "if(window.updateEnergy) updateEnergy({});",
+                self.my_energy as u32
+            ));
+        }
+        
+        /// Handle WELCOME message from server (legacy support)
+        fn handle_welcome(&mut self, msg: &str) {
+            // Parse: {"type":"WELCOME","id":"uuid","tick":0,"spawn":{...},"config":{...}}
+            if let Some(id_start) = msg.find(r#""id":""#) {
+                let id_start = id_start + 6;
+                if let Some(id_end) = msg[id_start..].find('"') {
+                    let my_id = msg[id_start..id_start+id_end].to_string();
+                    web_sys::console::log_1(&format!("[NET] ✓ Registered as player {}", &my_id[..8]).into());
+                    self.my_id = Some(my_id);
+                    self.connected = true;
+                    let _ = js_sys::eval("if(window.addNotification) addNotification('AUTHENTICATED WITH SERVER', 'success');");
+                }
+            }
+        }
+        
+        /// Handle ROOM_JOINED message (multi-room protocol)
+        fn handle_room_joined(&mut self, msg: &str) {
+            // Parse: {"type":"ROOM_JOINED","roomId":"...","tier":"FREE/PREMIUM/WHALE",...}
+            
+            // Extract player ID
+            if let Some(id_start) = msg.find(r#""playerId":""#) {
+                let id_start = id_start + 12;
+                if let Some(id_end) = msg[id_start..].find('"') {
+                    self.my_id = Some(msg[id_start..id_start+id_end].to_string());
+                }
+            }
+            
+            // Extract tier and determine multiplier
+            let (tier, multiplier, emoji) = if msg.contains(r#""tier":"WHALE""#) {
+                ("WHALE", "5.0", "🐋")
+            } else if msg.contains(r#""tier":"PREMIUM""#) {
+                ("PREMIUM", "2.5", "💎")
+            } else {
+                ("FREE", "1.0", "🆓")
+            };
+            
+            // Extract room name
+            let room_name = if let Some(name_start) = msg.find(r#""name":""#) {
+                let name_start = name_start + 8;
+                if let Some(name_end) = msg[name_start..].find('"') {
+                    msg[name_start..name_start+name_end].to_string()
+                } else {
+                    "Unknown".to_string()
+                }
+            } else {
+                "Unknown".to_string()
+            };
+            
+            self.connected = true;
+            
+            // ================================================================
+            // QA: HUGE LOG FOR VISUAL CONFIRMATION
+            // ================================================================
+            web_sys::console::log_1(&"".into());
+            web_sys::console::log_1(&"╔═══════════════════════════════════════════════════════════════════════════╗".into());
+            web_sys::console::log_1(&"║                                                                           ║".into());
+            web_sys::console::log_1(&format!("║   {}  ENTERED {} ROOM  {}                                          ║", emoji, tier, emoji).into());
+            web_sys::console::log_1(&"║                                                                           ║".into());
+            web_sys::console::log_1(&format!("║   LOOT MULTIPLIER: {}x                                                   ║", multiplier).into());
+            web_sys::console::log_1(&format!("║   ROOM: {}                                                     ║", room_name).into());
+            web_sys::console::log_1(&"║                                                                           ║".into());
+            web_sys::console::log_1(&"╚═══════════════════════════════════════════════════════════════════════════╝".into());
+            web_sys::console::log_1(&"".into());
+            
+            // HUGE on-screen notification
+            let _ = js_sys::eval(&format!(
+                "if(window.addNotification) addNotification('ENTERED {} ROOM - {}x LOOT {}', 'success');",
+                tier, multiplier, emoji
+            ));
+        }
+        
+        /// Handle MINE_SUCCESS message
+        fn handle_mine_success(&mut self, msg: &str) {
+            // Parse: {"type":"MINE_SUCCESS","reward":50,"newBalance":150,"wasGold":true}
+            
+            // Extract reward
+            let reward = if let Some(start) = msg.find(r#""reward":"#) {
+                let start = start + 9;
+                let end = msg[start..].find(',').or_else(|| msg[start..].find('}')).unwrap_or(0);
+                msg[start..start+end].parse::<u32>().unwrap_or(0)
+            } else {
+                0
+            };
+            
+            // Extract new balance
+            if let Some(start) = msg.find(r#""newBalance":"#) {
+                let start = start + 13;
+                let end = msg[start..].find(',').or_else(|| msg[start..].find('}')).unwrap_or(0);
+                if let Ok(balance) = msg[start..start+end].parse::<u32>() {
+                    self.my_balance = balance;
+                }
+            }
+            
+            let was_gold = msg.contains(r#""wasGold":true"#);
+            
+            if was_gold {
+                let _ = js_sys::eval(&format!(
+                    "if(window.addNotification) addNotification('GOLD MINED! +${}', 'success');",
+                    reward
+                ));
+            }
+            
+            // Update HUD
+            let _ = js_sys::eval(&format!(
+                "if(window.updateBalance) updateBalance({});",
+                self.my_balance
+            ));
+        }
+        
+        /// Handle LOGIN_FAILED message
+        fn handle_login_failed(&mut self, msg: &str) {
+            let reason = if msg.contains(r#""reason":"INVALID_WALLET""#) {
+                "Invalid wallet address"
+            } else if msg.contains(r#""reason":"ROOM_FULL""#) {
+                "Room is full"
+            } else {
+                "Unknown error"
+            };
+            
+            web_sys::console::error_1(&format!("[NET] ✗ Login failed: {}", reason).into());
+            let _ = js_sys::eval(&format!(
+                "if(window.addNotification) addNotification('LOGIN FAILED: {}', 'danger');",
+                reason
+            ));
+        }
+        
+        /// Handle STATE message (authoritative world snapshot)
+        fn handle_state(&mut self, msg: &str) {
+            // Parse: {"type":"STATE","tick":123,"time":1234567890,"players":[...]}
+            
+            // Extract tick
+            if let Some(tick_start) = msg.find(r#""tick":"#) {
+                let tick_start = tick_start + 7;
+                if let Some(tick_end) = msg[tick_start..].find(',') {
+                    if let Ok(tick) = msg[tick_start..tick_start+tick_end].parse::<u32>() {
+                        self.server_tick = tick;
+                    }
+                }
+            }
+            
+            // Parse players array
+            if let Some(players_start) = msg.find(r#""players":["#) {
+                let players_start = players_start + 11;
+                if let Some(players_end) = msg[players_start..].find(']') {
+                    let players_json = &msg[players_start..players_start+players_end];
+                    self.parse_state_players(players_json);
+                }
+            }
+        }
+        
+        /// Parse players from STATE message
+        fn parse_state_players(&mut self, players_json: &str) {
+            let mut players_map = self.remote_players.lock().unwrap();
+            let mut seen_ids = std::collections::HashSet::new();
+            
+            // Parse each player object
+            for player_str in players_json.split("},{") {
+                let player_str = player_str.trim_start_matches('{').trim_end_matches('}');
+                
+                // Parse id
+                let mut id = String::new();
+                if let Some(id_start) = player_str.find(r#""id":""#) {
+                    let id_start = id_start + 6;
+                    if let Some(id_end) = player_str[id_start..].find('"') {
+                        id = player_str[id_start..id_start+id_end].to_string();
+                    }
+                }
+                
+                if id.is_empty() { continue; }
+                seen_ids.insert(id.clone());
+                
+                // Parse numeric fields
+                let x = Self::parse_f32(player_str, r#""x":"#);
+                let y = Self::parse_f32(player_str, r#""y":"#);
+                let z = Self::parse_f32(player_str, r#""z":"#);
+                let yaw = Self::parse_f32(player_str, r#""yaw":"#);
+                let balance = Self::parse_u32(player_str, r#""balance":"#);
+                let energy = Self::parse_f32(player_str, r#""energy":"#);
+                
+                // Update or create player with interpolation
+                if let Some(existing) = players_map.get_mut(&id) {
+                    // Store previous for interpolation
+                    existing.prev_x = existing.x;
+                    existing.prev_y = existing.y;
+                    existing.prev_z = existing.z;
+                    existing.x = x;
+                    existing.y = y;
+                    existing.z = z;
+                    existing.yaw = yaw;
+                    existing.balance = balance;
+                    existing.energy = energy;
+                    existing.interp_t = 0.0; // Reset interpolation
+                } else {
+                    // New player
+                    players_map.insert(id.clone(), RemotePlayer {
+                        id,
+                        x, y, z, yaw,
+                        balance, energy,
+                        prev_x: x, prev_y: y, prev_z: z,
+                        interp_t: 1.0,
+                    });
+                }
+            }
+            
+            // Update player count
+            self.player_count = seen_ids.len() as u32;
+            
+            // Remove players no longer in state
+            players_map.retain(|id, _| seen_ids.contains(id));
+        }
+        
+        /// Helper: parse f32 from JSON string
+        fn parse_f32(s: &str, key: &str) -> f32 {
+            if let Some(start) = s.find(key) {
+                let start = start + key.len();
+                let end = s[start..].find(|c: char| c == ',' || c == '}').unwrap_or(s.len() - start);
+                s[start..start+end].parse().unwrap_or(0.0)
+            } else {
+                0.0
+            }
+        }
+        
+        /// Helper: parse u32 from JSON string
+        fn parse_u32(s: &str, key: &str) -> u32 {
+            if let Some(start) = s.find(key) {
+                let start = start + key.len();
+                let end = s[start..].find(|c: char| c == ',' || c == '}').unwrap_or(s.len() - start);
+                s[start..start+end].parse().unwrap_or(0)
+            } else {
+                0
+            }
+        }
+        
+        fn handle_player_join(&self, msg: &str) {
+            if let Some(count_start) = msg.find(r#""playerCount":"#) {
+                let count_start = count_start + 14;
+                if let Some(count_end) = msg[count_start..].find('}') {
+                    if let Ok(_count) = msg[count_start..count_start+count_end].parse::<u32>() {
+                        let _ = js_sys::eval("if(window.addNotification) addNotification('PLAYER JOINED THE ARENA', 'info');");
+                    }
+                }
+            }
+        }
+        
+        fn handle_player_leave(&self, msg: &str) {
+            if let Some(id_start) = msg.find(r#""id":""#) {
+                let id_start = id_start + 6;
+                if let Some(id_end) = msg[id_start..].find('"') {
+                    let left_id = &msg[id_start..id_start+id_end];
+                    web_sys::console::log_1(&format!("[NET] Player {} left", &left_id[..8.min(left_id.len())]).into());
+                    let _ = js_sys::eval("if(window.addNotification) addNotification('PLAYER LEFT THE ARENA', 'warning');");
+                }
+            }
+        }
+        
+        fn handle_balance_update(&mut self, msg: &str) {
+            // {"type":"BALANCE_UPDATE","balance":100,"energy":95,"reason":"MINE_BLOCK"}
+            if let Some(bal_start) = msg.find(r#""balance":"#) {
+                let bal_start = bal_start + 10;
+                if let Some(bal_end) = msg[bal_start..].find(',') {
+                    if let Ok(balance) = msg[bal_start..bal_start+bal_end].parse::<u32>() {
+                        self.my_balance = balance;
+                        let _ = js_sys::eval(&format!(
+                            "if(window.updateBalance) updateBalance({});",
+                            balance
+                        ));
+                    }
+                }
+            }
+            if let Some(eng_start) = msg.find(r#""energy":"#) {
+                let eng_start = eng_start + 9;
+                if let Some(eng_end) = msg[eng_start..].find(',').or_else(|| msg[eng_start..].find('}')) {
+                    if let Ok(energy) = msg[eng_start..eng_start+eng_end].parse::<f32>() {
+                        self.my_energy = energy;
+                    }
+                }
+            }
+        }
+        
+        fn handle_position_correction(&self, msg: &str) {
+            // Server rejected our movement - need to rubberband
+            web_sys::console::warn_1(&format!("[NET] Position corrected by server: {}", msg).into());
+            let _ = js_sys::eval("if(window.addNotification) addNotification('MOVEMENT REJECTED', 'danger');");
+        }
+        
+        fn handle_pong(&mut self, msg: &str) {
+            // {"type":"PONG","clientTime":123,"serverTime":456}
+            if let Some(ct_start) = msg.find(r#""clientTime":"#) {
+                let ct_start = ct_start + 13;
+                if let Some(ct_end) = msg[ct_start..].find(',') {
+                    if let Ok(client_time) = msg[ct_start..ct_start+ct_end].parse::<f64>() {
+                        let now = js_sys::Date::now();
+                        self.ping_ms = ((now - client_time) / 2.0) as u32;
+                    }
+                }
+            }
+        }
+        
+        /// Advance interpolation for smooth remote player movement
+        pub fn update_interpolation(&mut self, dt: f32) {
+            let mut players_map = self.remote_players.lock().unwrap();
+            for player in players_map.values_mut() {
+                // Smoothly interpolate from prev to current over ~33ms (one server tick)
+                player.interp_t = (player.interp_t + dt * 30.0).min(1.0);
+            }
+        }
+        
+        /// Get interpolated position for a remote player (alternative API)
+        #[allow(dead_code)]
+        pub fn get_interpolated_pos(&self, player_id: &str) -> Option<(f32, f32, f32, f32)> {
+            let players_map = self.remote_players.lock().ok()?;
+            let player = players_map.get(player_id)?;
+            
+            let t = player.interp_t;
+            let x = player.prev_x + (player.x - player.prev_x) * t;
+            let y = player.prev_y + (player.y - player.prev_y) * t;
+            let z = player.prev_z + (player.z - player.prev_z) * t;
+            
+            Some((x, y, z, player.yaw))
+        }
+    }
+    
+    /// Component marker for remote player ghosts
+    #[derive(Component)]
+    pub struct RemotePlayerGhost {
+        pub player_id: String,
+    }
+}
+
+/// System to update remote player ghosts with smooth interpolation
+#[cfg(target_arch = "wasm32")]
+fn update_remote_players_system(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    network: Res<networking::NetworkState>,
+    mut ghosts: Query<(Entity, &networking::RemotePlayerGhost, &mut Transform)>,
+) {
+    use std::collections::HashSet;
+    
+    let remote_players = network.remote_players.lock().unwrap();
+    let my_id_str = network.my_id.clone();
+    
+    // Track which ghosts exist
+    let mut existing_ids: HashSet<String> = HashSet::new();
+    
+    // Update existing ghosts with server-side interpolation
+    for (entity, ghost, mut transform) in ghosts.iter_mut() {
+        // Skip our own ID
+        if Some(&ghost.player_id) == my_id_str.as_ref() {
+            commands.entity(entity).despawn();
+            continue;
+        }
+        
+        if let Some(player) = remote_players.get(&ghost.player_id) {
+            // Use interpolated position for smooth movement
+            let t = player.interp_t;
+            let x = player.prev_x + (player.x - player.prev_x) * t;
+            let y = player.prev_y + (player.y - player.prev_y) * t;
+            let z = player.prev_z + (player.z - player.prev_z) * t;
+            
+            let target = Vec3::new(
+                x * BLOCK_SCALE,
+                y * BLOCK_SCALE,
+                z * BLOCK_SCALE,
+            );
+            
+            // Additional client-side smoothing
+            transform.translation = transform.translation.lerp(target, 0.4);
+            transform.rotation = Quat::from_rotation_y(player.yaw);
+            existing_ids.insert(ghost.player_id.clone());
+        } else {
+            // Player disconnected - remove ghost
+            commands.entity(entity).despawn();
+        }
+    }
+    
+    // Spawn new ghosts for new players
+    for (id, player) in remote_players.iter() {
+        // Skip our own ID
+        if Some(id) == my_id_str.as_ref() {
+            continue;
+        }
+        
+        if !existing_ids.contains(id) {
+            // Spawn new ghost (RED cube)
+            commands.spawn((
+                networking::RemotePlayerGhost { player_id: id.clone() },
+                PbrBundle {
+                    mesh: meshes.add(Cuboid::new(
+                        BLOCK_SCALE * 2.0,
+                        BLOCK_SCALE * 3.0,
+                        BLOCK_SCALE * 2.0,
+                    )),
+                    material: materials.add(StandardMaterial {
+                        base_color: Color::rgba(1.0, 0.2, 0.2, 0.8),
+                        emissive: Color::rgb(2.0, 0.3, 0.3),
+                        alpha_mode: bevy::pbr::AlphaMode::Blend,
+                        ..default()
+                    }),
+                    transform: Transform::from_xyz(
+                        player.x * BLOCK_SCALE,
+                        player.y * BLOCK_SCALE,
+                        player.z * BLOCK_SCALE,
+                    ),
+                    ..default()
+                },
+                Name::new(format!("Ghost_{}", &id[..8.min(id.len())])),
+            ));
+            
+            #[cfg(target_arch = "wasm32")]
+            web_sys::console::log_1(&format!("[NET] Spawned ghost for player {}", &id[..8.min(id.len())]).into());
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+mod networking {
+    use bevy::prelude::*;
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+    
+    // Stub for non-WASM builds
+    #[derive(Resource, Default)]
+    pub struct NetworkState {
+        pub connected: bool,
+        pub my_id: Option<String>,
+        pub player_count: u32,
+        pub ping_ms: u32,
+        pub remote_players: Arc<Mutex<HashMap<String, RemotePlayer>>>,
+    }
+    
+    #[derive(Clone)]
+    pub struct RemotePlayer {
+        pub id: String,
+        pub x: f32,
+        pub y: f32,
+        pub z: f32,
+        pub yaw: f32,
+        pub loot: u32,
+    }
+    
+    impl NetworkState {
+        pub fn connect(&mut self) {}
+        pub fn send_position(&self, _x: f32, _y: f32, _z: f32, _yaw: f32) {}
+        pub fn send_ping(&mut self) {}
+        pub fn process_messages(&mut self) {}
+    }
+    
+    #[derive(Component)]
+    pub struct RemotePlayerGhost {
+        pub player_id: String,
+    }
+    
+    pub fn update_remote_players() {}
+}
 
 // =============================================================================
 // CONFIGURATION
@@ -196,75 +890,93 @@ pub struct RenderedChunks {
 // BLOCK TYPES (from backend)
 // =============================================================================
 
-/// Block types matching oroboros_procedural
-/// UNDERCITY MATERIAL TYPES
-/// Dark, gritty, metallic cyberpunk aesthetic
+/// Block types for BRUTALIST MEGA-STRUCTURE
+/// Inspired by: Alice in Borderland + Squid Game
+/// Palette: Concrete Grey, Neon Red, Ice White
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(u8)]
 enum BlockType {
     Air = 0,
-    /// Surface Grid Floor - reflective metal panels
-    GridFloor = 1,
-    /// Dark Industrial Metal - cave walls and structures
-    DarkMetal = 2,
-    /// Glowing Crystal - valuable loot (HIGH EMISSION)
-    Crystal = 3,
-    /// Safe Zone Floor - extraction point marker
-    SafeZone = 4,
-    /// Obsidian Bedrock - indestructible base layer
-    Obsidian = 5,
+    /// Floor - Matte Grey Concrete
+    ConcreteFloor = 1,
+    /// Walls - Darker Concrete  
+    ConcreteWall = 2,
+    /// Hazard - Glowing Red Neon (DEATH)
+    HazardNeon = 3,
+    /// Goal - Ice White Laser Floor
+    GoalZone = 4,
+    /// Bedrock - Indestructible Black
+    Bedrock = 5,
+    /// Gold Loot - Contrasting Gold
+    GoldLoot = 6,
+    /// Bridge/Beam - Weathered Metal
+    MetalBridge = 7,
 }
 
 impl BlockType {
     fn from_id(id: u16) -> Self {
         match id {
             0 => BlockType::Air,
-            1 => BlockType::GridFloor,
-            2 => BlockType::DarkMetal,
-            3 => BlockType::Crystal,
-            4 => BlockType::SafeZone,
-            5 => BlockType::Obsidian,
-            _ => BlockType::DarkMetal,
+            1 => BlockType::ConcreteFloor,
+            2 => BlockType::ConcreteWall,
+            3 => BlockType::HazardNeon,
+            4 => BlockType::GoalZone,
+            5 => BlockType::Bedrock,
+            6 => BlockType::GoldLoot,
+            7 => BlockType::MetalBridge,
+            _ => BlockType::ConcreteWall,
         }
     }
     
-    /// Returns RGBA vertex color for PBR METALLIC pipeline
-    /// UNDERCITY PALETTE - Brighter Industrial Cyberpunk
+    /// Returns RGBA vertex color for BRUTALIST PALETTE
+    /// Grey concrete, red neon hazards, white goals
     fn vertex_color(&self) -> [f32; 4] {
         match self {
             // ID 0: Air -> Invisible
             BlockType::Air => [0.0, 0.0, 0.0, 0.0],
             
-            // ID 1: Grid Floor -> Light Steel Grey
-            // Visible reflective floor
-            BlockType::GridFloor => [0.5, 0.5, 0.55, 1.0],
+            // ID 1: Concrete Floor -> #505050 Matte Grey
+            // The arena floor - visible but muted
+            BlockType::ConcreteFloor => [0.314, 0.314, 0.314, 1.0],
             
-            // ID 2: Dark Metal -> Visible Grey (not black)
-            // Cave walls should be visible
-            BlockType::DarkMetal => [0.25, 0.25, 0.28, 1.0],
+            // ID 2: Concrete Wall -> #303030 Darker Grey
+            // Massive brutalist walls
+            BlockType::ConcreteWall => [0.188, 0.188, 0.188, 1.0],
             
-            // ID 3: Crystal -> BRIGHT GOLD with EMISSION
-            // HDR values >1.0 trigger bloom glow
-            BlockType::Crystal => [4.0, 3.2, 0.5, 1.0],
+            // ID 3: Hazard Neon -> #FF0000 GLOWING RED
+            // HDR emission for bloom - DEATH ZONE
+            BlockType::HazardNeon => [5.0, 0.0, 0.0, 1.0],
             
-            // ID 4: Safe Zone -> BRIGHT CYAN
-            BlockType::SafeZone => [0.0, 4.0, 4.0, 1.0],
+            // ID 4: Goal Zone -> #E0FFFF Ice White Glow
+            // The extraction point - safety
+            BlockType::GoalZone => [4.0, 5.0, 5.0, 1.0],
             
-            // ID 5: Obsidian -> Dark Grey (visible)
-            BlockType::Obsidian => [0.15, 0.15, 0.18, 1.0],
+            // ID 5: Bedrock -> #101010 Near Black
+            // Indestructible foundation
+            BlockType::Bedrock => [0.063, 0.063, 0.063, 1.0],
+            
+            // ID 6: Gold Loot -> Bright Gold (contrasts grey)
+            // Valuable collectible
+            BlockType::GoldLoot => [4.0, 3.0, 0.3, 1.0],
+            
+            // ID 7: Metal Bridge -> #404045 Weathered Steel
+            // Thin walkways connecting platforms
+            BlockType::MetalBridge => [0.25, 0.25, 0.27, 1.0],
         }
     }
     
-    /// Returns PBR Metallic value (0.0 = dielectric, 1.0 = metal)
+    /// Returns PBR Metallic value
     #[allow(dead_code)]
     fn metallic(&self) -> f32 {
         match self {
             BlockType::Air => 0.0,
-            BlockType::GridFloor => 0.9,    // High metal
-            BlockType::DarkMetal => 0.85,   // Industrial metal
-            BlockType::Crystal => 0.2,      // Crystal is not metal
-            BlockType::SafeZone => 0.3,     // Slight metallic sheen
-            BlockType::Obsidian => 0.95,    // Polished obsidian
+            BlockType::ConcreteFloor => 0.0,  // Concrete is not metal
+            BlockType::ConcreteWall => 0.0,   // Concrete is not metal
+            BlockType::HazardNeon => 0.1,     // Slight metallic sheen
+            BlockType::GoalZone => 0.2,       // Slight metallic
+            BlockType::Bedrock => 0.0,        // Matte black
+            BlockType::GoldLoot => 1.0,       // Pure metal
+            BlockType::MetalBridge => 0.9,    // Steel
         }
     }
     
@@ -273,11 +985,13 @@ impl BlockType {
     fn roughness(&self) -> f32 {
         match self {
             BlockType::Air => 1.0,
-            BlockType::GridFloor => 0.3,    // Shiny floor
-            BlockType::DarkMetal => 0.6,    // Slightly rough
-            BlockType::Crystal => 0.1,      // Very shiny crystal
-            BlockType::SafeZone => 0.4,     // Semi-gloss
-            BlockType::Obsidian => 0.05,    // Mirror polish
+            BlockType::ConcreteFloor => 0.9,  // Very matte concrete
+            BlockType::ConcreteWall => 1.0,   // Completely matte
+            BlockType::HazardNeon => 0.1,     // Shiny neon
+            BlockType::GoalZone => 0.2,       // Glossy
+            BlockType::Bedrock => 0.95,       // Almost matte
+            BlockType::GoldLoot => 0.3,       // Shiny gold
+            BlockType::MetalBridge => 0.6,    // Worn metal
         }
     }
     
@@ -579,18 +1293,18 @@ fn sync_chunks_to_bevy(
             // This allows the player to walk on the terrain
             let collider = Collider::trimesh_from_mesh(&result.mesh);
             
-            // Create new entity with UNDERCITY PBR material (dark metallic)
+            // Create new entity with BRUTALIST PBR material (matte concrete)
             let mut entity_commands = commands.spawn((
                 PbrBundle {
                     mesh: meshes.add(result.mesh),
                     material: materials.add(StandardMaterial {
                         // VERTEX COLORING: Must be WHITE to multiply with vertex colors
                         base_color: Color::WHITE,
-                        // UNDERCITY PBR: Dark Metallic Industrial
-                        metallic: 0.8,              // High metallic for industrial look
-                        perceptual_roughness: 0.35, // Shiny but not mirror
-                        reflectance: 0.6,           // Strong reflections
-                        // Emissive driven by vertex colors >1.0
+                        // BRUTALIST PBR: Matte Concrete
+                        metallic: 0.0,              // Concrete is not metallic
+                        perceptual_roughness: 0.85, // Very matte - brutalist look
+                        reflectance: 0.1,           // Minimal reflections
+                        // Emissive driven by vertex colors >1.0 (neon hazards)
                         emissive: Color::BLACK,
                         // Back-face culling ON for performance
                         cull_mode: Some(bevy::render::render_resource::Face::Back),
@@ -676,7 +1390,7 @@ fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     info!("===========================================");
-    info!("GLITCH WARS - Entering the Simulation");
+    info!("THE MEGA-STRUCTURE - Survive the Arena");
     info!("===========================================");
     
     // Pre-load spawn area and mark all initial chunks as dirty
@@ -705,19 +1419,20 @@ fn setup(
         info!("Spawn loaded: {} chunks, {} marked dirty", 
               stats.loaded_chunks, inner.dirty_chunks.len());
         
-        // Find ground height (scaled by BLOCK_SCALE)
-        let ground_y = find_ground_height(&inner.world_manager, 0, 0) as f32;
-        (ground_y + 3.0) * BLOCK_SCALE
+        // Spawn above the floor (BASE_FLOOR_Y = 4 blocks)
+        // Floor is at Y=4, player spawns just above
+        (4.0 + 2.0) * BLOCK_SCALE // Floor + clearance
     };
     
     info!("Spawn position: (0.0, {}, 0.0)", spawn_y);
     
     // =========================================================================
-    // PLAYER - Physics-based Character Controller (NO NOCLIP!)
+    // PLAYER - Compact, Fast Character Controller
     // =========================================================================
-    // Player size scaled with blocks (human ~7 blocks tall = 1.75m at 0.25 scale)
-    let player_radius = 0.15;  // Smaller to fit in block scale
-    let player_height = 0.4;   // Total capsule height
+    // Smaller player = feels faster, fits through tight spaces
+    // At BLOCK_SCALE=0.25: 3 blocks = 0.75 world units
+    let player_height = 3.0 * BLOCK_SCALE;  // 0.75 units (3 blocks tall)
+    let player_radius = 0.8 * BLOCK_SCALE;  // 0.2 units (compact)
     
     let player_id = commands.spawn((
         Player,
@@ -731,25 +1446,27 @@ fn setup(
         },
         // Physics components (Enterprise-grade) - MUST COLLIDE WITH TERRAIN
         RigidBody::Dynamic,
-        Collider::capsule(player_height * 0.5, player_radius), // Smaller capsule
+        Collider::capsule(player_height * 0.4, player_radius), // Tall capsule
         LockedAxes::ROTATION_LOCKED,         // Don't tip over!
-        Friction::new(0.3),                  // Some friction for better control
+        Friction::new(0.3),                  // Lower friction for speed
         Restitution::new(0.0),               // No bouncing
-        LinearDamping(5.0),                  // Base damping (modified by load)
-        GravityScale(1.5),                   // Good gravity feel
-        // ShapeCaster for step climbing - allows climbing up small ledges
+        LinearDamping(5.0),                  // Faster movement, less drag
+        GravityScale(3.0),                   // Strong gravity for snappy jumps
+        // ShapeCaster for ground detection
         ShapeCaster::new(
-            Collider::sphere(player_radius * 0.9),
-            Vec3::ZERO,
+            Collider::sphere(player_radius * 0.8),
+            Vec3::new(0.0, -player_height * 0.4, 0.0),
             Quat::IDENTITY,
             Direction3d::NEG_Y,
-        ).with_max_time_of_impact(0.5), // Check 0.5 units below
-        // Visual representation
+        ).with_max_time_of_impact(0.2), // Check just below feet
+        // Visual representation - bright so player is visible
         PbrBundle {
             mesh: meshes.add(Capsule3d::new(player_radius, player_height)),
             material: materials.add(StandardMaterial {
-                base_color: Color::rgb(0.0, 1.0, 1.0), // Cyan player
-                emissive: Color::rgb(0.0, 0.5, 0.5),   // Glow
+                base_color: Color::rgb(1.0, 0.9, 0.2), // Bright Yellow/Gold
+                emissive: Color::rgb(0.5, 0.4, 0.0),   // Warm glow
+                metallic: 0.8,
+                perceptual_roughness: 0.2,
                 ..default()
             }),
             transform: Transform::from_xyz(0.0, spawn_y, 0.0),
@@ -759,11 +1476,13 @@ fn setup(
     
     // CAMERA - First/Third Person, attached to Player as child
     // Press V to toggle between first and third person views
+    let cam_distance = 20.0 * BLOCK_SCALE; // Further back to see more of the maze
+    let cam_height = 12.0 * BLOCK_SCALE;   // Higher for better overview
     commands.spawn((
         PlayerCamera,
         CameraMode {
             third_person: true,  // Start in third person to see the player
-            distance: 2.0,       // Distance behind player
+            distance: cam_distance,
         },
         Camera3dBundle {
             camera: Camera {
@@ -771,14 +1490,24 @@ fn setup(
                 ..default()
             },
             tonemapping: Tonemapping::TonyMcMapface,
-            transform: Transform::from_xyz(0.0, 1.0, 2.0)  // Behind and above player
-                .looking_at(Vec3::new(0.0, 0.3, 0.0), Vec3::Y),
+            transform: Transform::from_xyz(0.0, cam_height, cam_distance)
+                .looking_at(Vec3::new(0.0, player_height * 0.3, 0.0), Vec3::Y),
             ..default()
         },
         BloomSettings {
-            intensity: 0.3,
-            low_frequency_boost: 0.7,
+            intensity: 0.4,
+            low_frequency_boost: 0.6,
             high_pass_frequency: 1.0,
+            ..default()
+        },
+        // BRUTALIST FOG - Hides chunk loading, adds menace
+        // Extends further for faster movement
+        FogSettings {
+            color: Color::rgb(0.05, 0.05, 0.07), // #0D0D12 - Darker void
+            falloff: bevy::pbr::FogFalloff::Linear {
+                start: 8.0,    // Clear near player
+                end: 100.0,    // Extended for fast gameplay
+            },
             ..default()
         },
     )).set_parent(player_id);
@@ -786,111 +1515,79 @@ fn setup(
     info!("Player spawned with Physics Character Controller");
     
     // =========================================================================
-    // THE VALIDATOR BEAM - Exit Point Visual
-    // A glowing cylinder at origin marking the extraction zone
+    // THE EXTRACTION BEAM - Pure White/Blue Laser
+    // The only safe zone in the arena - reach it to escape
     // =========================================================================
+    let beam_radius = 3.0 * BLOCK_SCALE;
+    let beam_height = 80.0 * BLOCK_SCALE; // Visible but not overwhelming
     commands.spawn((
-        Name::new("ValidatorBeam"),
+        Name::new("ExtractionBeam"),
         PbrBundle {
-            mesh: meshes.add(Cylinder::new(4.0, 200.0)), // Radius 4, Height 200
+            mesh: meshes.add(Cylinder::new(beam_radius, beam_height)),
             material: materials.add(StandardMaterial {
-                base_color: Color::rgba(0.0, 0.8, 1.0, 0.3), // Cyan transparent
-                emissive: Color::rgb(0.0, 2.0, 3.0),         // Strong glow
+                base_color: Color::rgba(0.88, 1.0, 1.0, 0.12), // Ice white, subtle
+                emissive: Color::rgb(3.0, 5.0, 6.0),           // Bright glow
                 alpha_mode: bevy::pbr::AlphaMode::Blend,
-                unlit: true, // Don't receive shadows
+                unlit: true,
                 ..default()
             }),
-            transform: Transform::from_xyz(0.0, 100.0, 0.0), // Center beam
+            transform: Transform::from_xyz(0.0, beam_height * 0.5 + 4.0 * BLOCK_SCALE, 0.0),
             ..default()
         },
     ));
-    info!("Validator Beam spawned at origin - this is the EXIT!");
+    info!("Extraction Beam spawned - REACH IT TO ESCAPE!");
     
     // =========================================================================
-    // UNDERCITY LIGHTING - Dramatic 3-Point Setup
+    // BRUTALIST LIGHTING - Stadium Sun / Moonlight Effect
     // =========================================================================
+    // One strong directional light casting long, sharp shadows
+    // Like a giant artificial sun in a dead arena
     
-    // Main light: Bright white from above
+    // THE STADIUM SUN - High angle, harsh shadows
     commands.spawn(DirectionalLightBundle {
         directional_light: DirectionalLight {
-            illuminance: 25000.0,  // MUCH brighter
+            illuminance: 50000.0,  // Intense artificial light
             shadows_enabled: true,
-            color: Color::rgb(0.9, 0.9, 1.0), // Near white
+            shadow_depth_bias: 0.02,
+            shadow_normal_bias: 0.6,
+            color: Color::rgb(0.95, 0.95, 1.0), // Cold white
             ..default()
         },
         transform: Transform::from_rotation(Quat::from_euler(
             EulerRot::XYZ,
-            -0.8,
-            0.3,
+            -1.2,  // Steep angle for long shadows
+            0.4,
             0.0,
         )),
         ..default()
     });
     
-    // Accent Light 1: CYAN (bright)
+    // Player carried light - dim flashlight for nearby visibility
     commands.spawn(PointLightBundle {
         point_light: PointLight {
-            intensity: 500000.0,  // Much brighter
-            color: Color::rgb(0.0, 1.0, 1.0),
-            range: 150.0,
+            intensity: 15000.0,  // Dim - just for immediate area
+            color: Color::rgb(0.9, 0.85, 0.8), // Slightly warm
+            range: 8.0,
             shadows_enabled: false,
             ..default()
         },
-        transform: Transform::from_xyz(-50.0, 70.0, -50.0),
-        ..default()
-    });
-    
-    // Accent Light 2: MAGENTA (bright)
-    commands.spawn(PointLightBundle {
-        point_light: PointLight {
-            intensity: 400000.0,
-            color: Color::rgb(1.0, 0.0, 0.8),
-            range: 120.0,
-            shadows_enabled: false,
-            ..default()
-        },
-        transform: Transform::from_xyz(50.0, 65.0, 50.0),
-        ..default()
-    });
-    
-    // Accent Light 3: ORANGE (bright)
-    commands.spawn(PointLightBundle {
-        point_light: PointLight {
-            intensity: 300000.0,
-            color: Color::rgb(1.0, 0.6, 0.0),
-            range: 100.0,
-            shadows_enabled: false,
-            ..default()
-        },
-        transform: Transform::from_xyz(0.0, 60.0, -60.0),
-        ..default()
-    });
-    
-    // Player carried light - MUCH STRONGER flashlight
-    commands.spawn(PointLightBundle {
-        point_light: PointLight {
-            intensity: 150000.0,  // Strong flashlight
-            color: Color::rgb(1.0, 0.98, 0.9), // Warm white
-            range: 50.0,
-            shadows_enabled: false,
-            ..default()
-        },
-        transform: Transform::from_xyz(0.0, 2.0, 0.0),
+        transform: Transform::from_xyz(0.0, 0.5, 0.0),
         ..default()
     }).set_parent(player_id);
     
-    // BRIGHTER ambient light - can see everywhere
+    // DARK ambient - shadows should be DARK
     commands.insert_resource(AmbientLight {
-        color: Color::rgb(0.3, 0.3, 0.35), // Light grey-blue
-        brightness: 200.0,                  // Much brighter!
+        color: Color::rgb(0.15, 0.15, 0.2), // Cold blue-grey
+        brightness: 50.0,                    // Very low - makes shadows scary
     });
     
-    info!("UNDERCITY initialized. WASD to move, SPACE to jump, mouse to look.");
-    info!("Find the CYAN BEAM at origin to EXTRACT!");
+    info!("THE MEGA-STRUCTURE initialized. WASD to move, SPACE to jump.");
+    info!("Find the WHITE BEAM at origin to ESCAPE!");
     info!("===========================================");
 }
 
 /// Find ground height at position (for UNDERCITY terrain)
+#[allow(dead_code)]
 fn find_ground_height(world: &WorldManager, x: i32, z: i32) -> i32 {
     // Search from top down to find first solid block
     for y in (0..128).rev() {
@@ -908,8 +1605,8 @@ fn find_ground_height(world: &WorldManager, x: i32, z: i32) -> i32 {
 // MINING SYSTEM - Block Breaking & Placing
 // =============================================================================
 
-/// Maximum reach distance for mining (in blocks)
-const MINING_REACH: f32 = 5.0;
+/// Maximum reach distance for mining (in world units, scaled)
+const MINING_REACH: f32 = 5.0 * BLOCK_SCALE;
 
 /// System to handle block mining (breaking/placing)
 fn handle_mining(
@@ -930,12 +1627,19 @@ fn handle_mining(
     let ray_origin = camera_global.translation();
     let ray_direction = camera_global.forward(); // GlobalTransform::forward() returns Vec3
     
-    // Simple voxel raycast (DDA algorithm)
-    if let Some((hit_pos, hit_normal)) = voxel_raycast(&bridge, ray_origin, ray_direction, MINING_REACH) {
-        // Draw crosshair at hit point
-        let hit_world = Vec3::new(hit_pos.0 as f32 + 0.5, hit_pos.1 as f32 + 0.5, hit_pos.2 as f32 + 0.5);
+    // Simple voxel raycast (DDA algorithm) - scale origin to block coordinates
+    let scaled_origin = ray_origin / BLOCK_SCALE;
+    let scaled_reach = MINING_REACH / BLOCK_SCALE;
+    
+    if let Some((hit_pos, hit_normal)) = voxel_raycast(&bridge, scaled_origin, ray_direction, scaled_reach) {
+        // Draw crosshair at hit point (scaled back to world coordinates)
+        let hit_world = Vec3::new(
+            (hit_pos.0 as f32 + 0.5) * BLOCK_SCALE, 
+            (hit_pos.1 as f32 + 0.5) * BLOCK_SCALE, 
+            (hit_pos.2 as f32 + 0.5) * BLOCK_SCALE
+        );
         gizmos.cuboid(
-            Transform::from_translation(hit_world).with_scale(Vec3::splat(1.02)),
+            Transform::from_translation(hit_world).with_scale(Vec3::splat(BLOCK_SCALE * 1.02)),
             Color::rgba(1.0, 1.0, 0.0, 0.5),
         );
         
@@ -1066,10 +1770,10 @@ fn voxel_raycast(
 // PHYSICS MOVEMENT CONTROLLER - WASD + Jump
 // =============================================================================
 
-/// Movement speed (units per second) - scaled for smaller blocks
-const PLAYER_SPEED: f32 = 2.0;
-/// Jump impulse (vertical velocity) - scaled
-const JUMP_IMPULSE: f32 = 2.5;
+/// Movement speed - FAST arcade movement (12 blocks/sec)
+const PLAYER_SPEED: f32 = 12.0 * BLOCK_SCALE; // 3.0 units/sec - 3x faster
+/// Jump impulse - high jumps for parkour (can clear ~4 blocks)
+const JUMP_IMPULSE: f32 = 6.0; // 2x higher jumps
 
 /// Physics-based movement controller
 /// Uses WASD for horizontal movement, SPACE for jump
@@ -1144,14 +1848,17 @@ fn toggle_camera_mode(
         if let Ok((mut mode, mut transform)) = camera_query.get_single_mut() {
             mode.third_person = !mode.third_person;
             
+            let player_height = 7.0 * BLOCK_SCALE;
+            
             if mode.third_person {
                 // Third person: behind and above
-                transform.translation = Vec3::new(0.0, 0.8, mode.distance);
-                transform.look_at(Vec3::new(0.0, 0.3, 0.0), Vec3::Y);
+                let cam_height = 8.0 * BLOCK_SCALE;
+                transform.translation = Vec3::new(0.0, cam_height, mode.distance);
+                transform.look_at(Vec3::new(0.0, player_height * 0.3, 0.0), Vec3::Y);
                 info!("Camera: Third Person (press V to change)");
             } else {
-                // First person: at eye level
-                transform.translation = Vec3::new(0.0, 0.35, 0.0);
+                // First person: at eye level (top of player)
+                transform.translation = Vec3::new(0.0, player_height * 0.4, 0.0);
                 transform.rotation = Quat::IDENTITY;
                 info!("Camera: First Person (press V to change)");
             }
@@ -1179,6 +1886,8 @@ fn mouse_look(
         player_transform.rotate_y(-delta.x * MOUSE_SENSITIVITY);
     }
     
+    let player_height = 7.0 * BLOCK_SCALE;
+    
     // Handle camera based on mode
     if let Ok((mut camera_transform, mode)) = camera_query.get_single_mut() {
         if mode.third_person {
@@ -1188,11 +1897,12 @@ fn mouse_look(
             
             // Update camera position based on pitch
             let distance = mode.distance;
-            let height = 0.6 + distance * new_pitch.sin().abs();
+            let base_height = 6.0 * BLOCK_SCALE;
+            let height = base_height + distance * new_pitch.sin().abs() * 0.5;
             let back = distance * new_pitch.cos().max(0.3);
             
             camera_transform.translation = Vec3::new(0.0, height, back);
-            camera_transform.look_at(Vec3::new(0.0, 0.3, 0.0), Vec3::Y);
+            camera_transform.look_at(Vec3::new(0.0, player_height * 0.3, 0.0), Vec3::Y);
         } else {
             // First person: rotate camera pitch (up/down)
             let pitch = (camera_transform.rotation.to_euler(EulerRot::YXZ).1 - delta.y * MOUSE_SENSITIVITY)
@@ -1206,7 +1916,7 @@ fn mouse_look(
 // VOID FALL RESPAWN - Teleport player if they fall off the map
 // =============================================================================
 
-/// If player falls below Y=-2.5 (scaled), respawn them at the center
+/// If player falls into the RED HAZARD ZONE, respawn them
 fn check_void_fall(
     mut player_query: Query<(&mut Transform, &mut LinearVelocity), With<Player>>,
 ) {
@@ -1214,13 +1924,14 @@ fn check_void_fall(
         return;
     };
     
-    // Scaled: -10 blocks * 0.25 = -2.5 units
-    if transform.translation.y < -2.5 {
-        // Respawn at safe height above arena center (scaled)
-        transform.translation = Vec3::new(0.0, 3.0 * BLOCK_SCALE, 0.0);
+    // Hazard zone is Y=2, floor is Y=4
+    // Respawn if below Y=3 (falling into pit)
+    if transform.translation.y < 3.0 * BLOCK_SCALE {
+        // Respawn above floor at origin (BASE_FLOOR_Y=4 + clearance)
+        transform.translation = Vec3::new(0.0, 6.0 * BLOCK_SCALE, 0.0);
         // Reset velocity
         velocity.0 = Vec3::ZERO;
-        info!("Player respawned (fell into void)");
+        info!("⚠️ DEATH - Fell into the Red Zone! Respawning...");
     }
 }
 
@@ -1288,11 +1999,14 @@ fn main() {
                 .set(WindowPlugin {
                     primary_window: Some(Window {
                         title: "GLITCH WARS - The Simulation".into(),
-                        // FULL SCREEN: Large resolution, CSS scales to viewport
-                        mode: WindowMode::BorderlessFullscreen,
+                        // WINDOWED: Use CSS to stretch canvas to viewport
+                        // NOTE: BorderlessFullscreen requires user gesture in browsers
+                        mode: WindowMode::Windowed,
                         // CRITICAL: Bind to canvas element in index.html
                         canvas: Some("#bevy".into()),
                         prevent_default_event_handling: true,
+                        // Large resolution - CSS will scale down
+                        resolution: (1920., 1080.).into(),
                         // WASM: Start with cursor UNLOCKED (user must click first)
                         cursor: bevy::window::Cursor {
                             visible: true,
@@ -1332,8 +2046,8 @@ fn main() {
     app.insert_resource(bevy_xpbd_3d::prelude::SubstepCount(4));
     
     app
-        // THE VOID - Almost black background (#050505)
-        .insert_resource(ClearColor(Color::rgb(0.02, 0.02, 0.02)))
+        // THE VOID - Pure black abyss (matches fog end color)
+        .insert_resource(ClearColor(Color::rgb(0.04, 0.04, 0.05)))
         
         // Configure gravity (slightly stronger for snappy movement)
         .insert_resource(Gravity(Vec3::new(0.0, -20.0, 0.0)))
@@ -1368,6 +2082,100 @@ fn main() {
         app.add_systems(Update, grab_mouse_on_click);
         app.add_systems(Update, release_mouse_on_escape);
     }
+    
+    // MULTIPLAYER: Add networking resource and systems
+    app.insert_resource(networking::NetworkState::default());
+    // Initialize networking on startup (for WASM, this connects to the server)
+    #[cfg(target_arch = "wasm32")]
+    app.add_systems(Startup, init_networking);
+    app.add_systems(Update, network_tick);
+    app.add_systems(Update, process_network_messages);
+    
+    #[cfg(target_arch = "wasm32")]
+    {
+        app.add_systems(Update, update_remote_players_system);
+    }
         
     app.run();
 }
+
+// =============================================================================
+// NETWORKING SYSTEMS
+// =============================================================================
+
+/// Initialize networking on startup (currently using lazy init instead)
+#[cfg(target_arch = "wasm32")]
+#[allow(dead_code)]
+fn init_networking(mut network: ResMut<networking::NetworkState>) {
+    web_sys::console::log_1(&"[GAME] Initializing multiplayer networking...".into());
+    info!("Initializing multiplayer networking...");
+    network.connect();
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[allow(dead_code)]
+fn init_networking(_network: ResMut<networking::NetworkState>) {
+    info!("Networking disabled on native build");
+}
+
+/// Network tick - send position to authoritative server
+#[cfg(target_arch = "wasm32")]
+fn network_tick(
+    mut network: ResMut<networking::NetworkState>,
+    player_query: Query<&Transform, With<Player>>,
+    time: Res<Time>,
+    mut last_send: Local<f32>,
+    mut last_ping: Local<f32>,
+    mut initialized: Local<bool>,
+    mut frame_count: Local<u32>,
+) {
+    // Debug: Log every 60 frames
+    *frame_count += 1;
+    if *frame_count == 1 || *frame_count % 300 == 0 {
+        web_sys::console::log_1(&format!("[NET-TICK] Frame {}, initialized={}", *frame_count, *initialized).into());
+    }
+    
+    // Lazy initialization - connect on first tick
+    if !*initialized {
+        *initialized = true;
+        web_sys::console::log_1(&"[NET] *** INITIALIZING MULTIPLAYER CONNECTION ***".into());
+        network.connect();
+    }
+    
+    let dt = time.delta_seconds();
+    
+    // Update interpolation for smooth remote player movement
+    network.update_interpolation(dt);
+    
+    // Send INPUT at 20 updates per second
+    *last_send += dt;
+    if *last_send >= 0.05 { // 20 Hz
+        *last_send = 0.0;
+        
+        if let Ok(transform) = player_query.get_single() {
+            // Convert from world coordinates back to block coordinates
+            let pos = transform.translation / BLOCK_SCALE;
+            let (_, yaw, _) = transform.rotation.to_euler(EulerRot::YXZ);
+            network.send_input(pos.x, pos.y, pos.z, yaw);
+        }
+    }
+    
+    // Send PING every 2 seconds for latency measurement
+    *last_ping += dt;
+    if *last_ping >= 2.0 {
+        *last_ping = 0.0;
+        network.send_ping();
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn network_tick() {}
+
+/// Process network messages (needs mutable access)
+#[cfg(target_arch = "wasm32")]
+fn process_network_messages(mut network: ResMut<networking::NetworkState>) {
+    network.process_messages();
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn process_network_messages(_network: ResMut<networking::NetworkState>) {}

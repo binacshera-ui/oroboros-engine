@@ -1,0 +1,624 @@
+/* ============================================================
+   GLITCH WARS - Cyberpunk Financial HUD Stylesheet
+   Style: Terminal/Matrix aesthetic with neon accents
+   ============================================================ */
+
+/* ============================================================
+   RESET & BASE
+   ============================================================ */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: #050505;
+    overflow: hidden;
+    font-family: 'Courier New', 'Monaco', 'Consolas', monospace;
+}
+
+/* ============================================================
+   LOADING SCREEN
+   ============================================================ */
+#loading {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    background: #050505;
+}
+
+.glitch-title {
+    font-size: 48px;
+    font-weight: bold;
+    color: #00FF41;
+    text-shadow: 
+        0 0 10px #00FF41,
+        0 0 20px #00FF41,
+        0 0 40px #00FF41,
+        2px 2px 0 #FF0055,
+        -2px -2px 0 #FFD700;
+    animation: glitch 0.5s infinite;
+    letter-spacing: 8px;
+}
+
+@keyframes glitch {
+    0%, 100% { transform: translate(0); }
+    20% { transform: translate(-2px, 2px); }
+    40% { transform: translate(2px, -2px); }
+    60% { transform: translate(-1px, -1px); }
+    80% { transform: translate(1px, 1px); }
+}
+
+.loading-text {
+    margin-top: 30px;
+    color: #00FF41;
+    font-size: 16px;
+    letter-spacing: 4px;
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+.loading-bar {
+    margin-top: 20px;
+    width: 300px;
+    height: 4px;
+    background: #1a1a1a;
+    border: 1px solid #00FF41;
+    overflow: hidden;
+}
+
+.loading-bar::after {
+    content: '';
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, #00FF41, #FFD700, #FF0055, #00FF41);
+    background-size: 200% 100%;
+    animation: loading 2s linear infinite;
+}
+
+@keyframes loading {
+    0% { background-position: 0% 0%; }
+    100% { background-position: 200% 0%; }
+}
+
+.error {
+    color: #FF0055 !important;
+    text-shadow: 0 0 10px #FF0055 !important;
+}
+
+/* ============================================================
+   CLICK TO START OVERLAY
+   ============================================================ */
+#click-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(5, 5, 5, 0.95);
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 1001;
+    cursor: pointer;
+}
+
+.click-prompt {
+    margin-top: 40px;
+    color: #FFD700;
+    font-size: 24px;
+    letter-spacing: 6px;
+    text-shadow: 0 0 10px #FFD700, 0 0 20px #FFD700;
+    animation: blink 1.5s infinite;
+}
+
+@keyframes blink {
+    0%, 50%, 100% { opacity: 1; }
+    25%, 75% { opacity: 0.3; }
+}
+
+.click-subtext {
+    margin-top: 20px;
+    color: #00FF41;
+    font-size: 12px;
+    letter-spacing: 4px;
+    opacity: 0.7;
+}
+
+/* ============================================================
+   BEVY CANVAS
+   ============================================================ */
+#bevy {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    min-width: 100vw !important;
+    min-height: 100vh !important;
+    display: block !important;
+    z-index: 0;
+    touch-action: none;
+    object-fit: cover;
+}
+
+/* ============================================================
+   SCANLINES OVERLAY
+   ============================================================ */
+#scanlines {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 999;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 255, 65, 0.03) 2px,
+        rgba(0, 255, 65, 0.03) 4px
+    );
+}
+
+/* ============================================================
+   HUD PANEL BASE STYLES
+   ============================================================ */
+.hud-panel {
+    position: fixed;
+    background: rgba(0, 0, 0, 0.85);
+    border: 1px solid rgba(0, 255, 65, 0.3);
+    padding: 12px 16px;
+    font-size: 12px;
+    color: #00FF41;
+    z-index: 998;
+    pointer-events: none;
+    backdrop-filter: blur(2px);
+    box-shadow: 
+        0 0 10px rgba(0, 255, 65, 0.1),
+        inset 0 0 20px rgba(0, 0, 0, 0.5);
+}
+
+.hud-panel::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #00FF41, transparent);
+}
+
+/* ============================================================
+   HUD POSITIONING
+   ============================================================ */
+.hud-top-right {
+    top: 20px;
+    right: 20px;
+    min-width: 180px;
+}
+
+.hud-top-center {
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    min-width: 200px;
+}
+
+.hud-top-left {
+    top: 20px;
+    left: 20px;
+    min-width: 140px;
+}
+
+.hud-bottom-center {
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 350px;
+}
+
+.hud-bottom-left {
+    bottom: 20px;
+    left: 20px;
+    min-width: 100px;
+}
+
+.hud-bottom-right {
+    bottom: 20px;
+    right: 20px;
+    min-width: 200px;
+    max-width: 300px;
+}
+
+/* ============================================================
+   HUD ROW ELEMENTS
+   ============================================================ */
+.hud-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(0, 255, 65, 0.1);
+}
+
+.hud-row:last-child {
+    border-bottom: none;
+}
+
+.hud-label {
+    color: #888;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+
+.hud-value {
+    font-weight: bold;
+    font-size: 14px;
+    text-shadow: 0 0 5px currentColor;
+}
+
+/* Value colors */
+.hud-value.money {
+    color: #00FF41;
+}
+
+.hud-value.gold {
+    color: #FFD700;
+    text-shadow: 0 0 10px #FFD700;
+}
+
+.hud-value.wallet {
+    color: #00BFFF;
+    font-size: 11px;
+    font-family: monospace;
+}
+
+/* Status colors */
+.hud-value.status-connected {
+    color: #00FF41;
+}
+
+.hud-value.status-disconnected {
+    color: #FF0055;
+}
+
+/* Connection status dot */
+.hud-status {
+    font-size: 10px;
+    margin-left: 8px;
+}
+
+.hud-status.connected {
+    color: #00FF41;
+    text-shadow: 0 0 10px #00FF41;
+    animation: pulse 2s infinite;
+}
+
+.hud-status.disconnected {
+    color: #FF0055;
+    text-shadow: 0 0 10px #FF0055;
+}
+
+/* ============================================================
+   RISK PANEL (Top Center)
+   ============================================================ */
+.risk-header {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.risk-icon {
+    color: #FFD700;
+    font-size: 14px;
+    animation: pulse 1s infinite;
+}
+
+.risk-label {
+    color: #FFD700;
+    font-size: 10px;
+    letter-spacing: 3px;
+}
+
+.risk-value {
+    font-size: 28px;
+    font-weight: bold;
+    color: #00FF41;
+    text-shadow: 0 0 10px #00FF41, 0 0 20px #00FF41;
+    margin: 8px 0;
+}
+
+.risk-value.risk-medium {
+    color: #FFD700;
+    text-shadow: 0 0 10px #FFD700, 0 0 20px #FFD700;
+}
+
+.risk-value.risk-high {
+    color: #FF8800;
+    text-shadow: 0 0 10px #FF8800, 0 0 20px #FF8800;
+    animation: risk-pulse 0.5s infinite;
+}
+
+.risk-value.risk-critical {
+    color: #FF0055;
+    text-shadow: 0 0 15px #FF0055, 0 0 30px #FF0055;
+    animation: risk-pulse 0.3s infinite;
+}
+
+@keyframes risk-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.risk-bar {
+    width: 100%;
+    height: 4px;
+    background: #1a1a1a;
+    border: 1px solid rgba(255, 0, 85, 0.3);
+    margin: 8px 0;
+}
+
+.risk-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #00FF41, #FFD700, #FF8800, #FF0055);
+    transition: width 0.3s ease;
+}
+
+.risk-subtext {
+    color: #666;
+    font-size: 9px;
+    letter-spacing: 2px;
+}
+
+/* ============================================================
+   ENERGY BAR (Bottom Center)
+   ============================================================ */
+.energy-container {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.energy-label {
+    color: #888;
+    font-size: 10px;
+    letter-spacing: 2px;
+    min-width: 50px;
+}
+
+.energy-bar {
+    flex: 1;
+    height: 20px;
+    background: rgba(0, 0, 0, 0.8);
+    border: 1px solid rgba(0, 255, 65, 0.5);
+    position: relative;
+    overflow: hidden;
+}
+
+.energy-fill {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #00FF41 0%, #00FF41 60%, #00DD33 100%);
+    transition: width 0.3s ease, background 0.3s ease;
+    box-shadow: 0 0 10px rgba(0, 255, 65, 0.5);
+}
+
+.energy-fill.energy-high {
+    background: linear-gradient(90deg, #00FF41, #00DD33);
+}
+
+.energy-fill.energy-medium {
+    background: linear-gradient(90deg, #FFD700, #FF8800);
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+}
+
+.energy-fill.energy-low {
+    background: linear-gradient(90deg, #FF0055, #FF3366);
+    box-shadow: 0 0 10px rgba(255, 0, 85, 0.5);
+    animation: energy-critical 0.5s infinite;
+}
+
+@keyframes energy-critical {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+.energy-segments {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: repeating-linear-gradient(
+        90deg,
+        transparent,
+        transparent 9%,
+        rgba(0, 0, 0, 0.5) 9%,
+        rgba(0, 0, 0, 0.5) 10%
+    );
+    pointer-events: none;
+}
+
+.energy-percent {
+    color: #00FF41;
+    font-size: 14px;
+    font-weight: bold;
+    min-width: 45px;
+    text-align: right;
+    text-shadow: 0 0 5px #00FF41;
+}
+
+/* ============================================================
+   COORDINATES (Bottom Left)
+   ============================================================ */
+.coord-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 2px 0;
+}
+
+.coord-label {
+    color: #666;
+    font-size: 10px;
+}
+
+.coord-value {
+    color: #00BFFF;
+    font-size: 11px;
+    font-family: monospace;
+    min-width: 60px;
+    text-align: right;
+}
+
+/* ============================================================
+   NOTIFICATIONS (Bottom Right)
+   ============================================================ */
+#notification-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.notification {
+    padding: 8px 12px;
+    font-size: 11px;
+    border-left: 2px solid #00FF41;
+    background: rgba(0, 255, 65, 0.1);
+    animation: notification-slide 0.3s ease;
+}
+
+@keyframes notification-slide {
+    from {
+        transform: translateX(20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.notification-info {
+    color: #00FF41;
+    border-left-color: #00FF41;
+}
+
+.notification-warning {
+    color: #FFD700;
+    border-left-color: #FFD700;
+    background: rgba(255, 215, 0, 0.1);
+}
+
+.notification-danger {
+    color: #FF0055;
+    border-left-color: #FF0055;
+    background: rgba(255, 0, 85, 0.1);
+}
+
+.notification-gold {
+    color: #FFD700;
+    border-left-color: #FFD700;
+    background: rgba(255, 215, 0, 0.15);
+    text-shadow: 0 0 5px #FFD700;
+}
+
+.notification-fade {
+    animation: notification-fade 0.5s ease forwards;
+}
+
+@keyframes notification-fade {
+    to {
+        transform: translateX(20px);
+        opacity: 0;
+    }
+}
+
+/* ============================================================
+   FLASH ANIMATIONS (For value updates)
+   ============================================================ */
+.flash {
+    animation: flash-green 0.3s ease;
+}
+
+@keyframes flash-green {
+    0%, 100% { color: #00FF41; }
+    50% { color: #FFFFFF; text-shadow: 0 0 20px #00FF41; }
+}
+
+.flash-gold {
+    animation: flash-gold 0.5s ease;
+}
+
+@keyframes flash-gold {
+    0%, 100% { color: #FFD700; }
+    50% { 
+        color: #FFFFFF; 
+        text-shadow: 0 0 30px #FFD700;
+        transform: scale(1.2);
+    }
+}
+
+/* ============================================================
+   RESPONSIVE ADJUSTMENTS
+   ============================================================ */
+@media (max-width: 768px) {
+    .hud-panel {
+        font-size: 10px;
+        padding: 8px 12px;
+    }
+    
+    .risk-value {
+        font-size: 22px;
+    }
+    
+    .hud-bottom-center {
+        min-width: 250px;
+    }
+    
+    .glitch-title {
+        font-size: 32px;
+    }
+}
+
+/* ============================================================
+   UTILITY CLASSES
+   ============================================================ */
+.hidden {
+    display: none !important;
+}
+
+.glow-green {
+    text-shadow: 0 0 10px #00FF41, 0 0 20px #00FF41;
+}
+
+.glow-red {
+    text-shadow: 0 0 10px #FF0055, 0 0 20px #FF0055;
+}
+
+.glow-gold {
+    text-shadow: 0 0 10px #FFD700, 0 0 20px #FFD700;
+}

@@ -1,9 +1,10 @@
 //! # Terrain Quality Tests
 //!
-//! Verifies that terrain looks like a habitable forest, not a math equation.
+//! Verifies that terrain is a proper BRUTALIST MEGA-STRUCTURE.
+//! Grid architecture with rooms, walls, bridges, and hazard zones.
 
 use oroboros_procedural::{
-    Block, ChunkCoord, ChunkGenerator, WorldSeed, BiomeClassifier,
+    ChunkCoord, ChunkGenerator, WorldSeed, BiomeClassifier,
 };
 
 /// Test: Verify terrain has flat walkable areas.
@@ -76,135 +77,151 @@ fn test_terrain_has_mountains() {
     );
 }
 
-/// Test: Verify chunks contain trees.
+/// Test: Verify chunks contain BRUTALIST STRUCTURES (walls, bridges, hazards).
+/// Block IDs:
+/// - 1 = Concrete Floor
+/// - 2 = Concrete Wall  
+/// - 3 = Hazard Neon (red death zone)
+/// - 4 = Goal Zone (extraction)
+/// - 5 = Bedrock
+/// - 6 = Gold Loot
+/// - 7 = Metal Bridge
 #[test]
-fn test_chunks_have_trees() {
+fn test_chunks_have_brutalist_structures() {
     let seed = WorldSeed::new(42);
     let gen = ChunkGenerator::new(seed);
     
-    let mut total_wood_blocks = 0;
-    let mut total_leaf_blocks = 0;
-    let mut chunks_with_trees = 0;
+    let mut total_concrete_floor = 0;
+    let mut total_concrete_wall = 0;
+    let mut total_hazard_neon = 0;
+    let mut total_metal_bridge = 0;
+    let mut total_bedrock = 0;
+    let mut chunks_with_walls = 0;
+    let mut chunks_with_bridges = 0;
     
-    // Generate multiple chunks and count trees
+    // Generate multiple chunks and count structures
     for cz in -5..5 {
         for cx in -5..5 {
             let chunk = gen.generate(ChunkCoord::new(cx, cz));
             
-            let mut chunk_wood = 0;
-            let mut chunk_leaves = 0;
+            let mut chunk_walls = 0;
+            let mut chunk_bridges = 0;
             
-            // Count wood and leaf blocks
+            // Count block types
             for y in 0..256 {
                 for z in 0..16 {
                     for x in 0..16 {
                         let block = chunk.get_block(x, y, z);
-                        if block.id == Block::WOOD.id {
-                            chunk_wood += 1;
-                        } else if block.id == Block::LEAVES.id {
-                            chunk_leaves += 1;
+                        match block.id {
+                            1 => total_concrete_floor += 1,
+                            2 => { total_concrete_wall += 1; chunk_walls += 1; }
+                            3 => total_hazard_neon += 1,
+                            5 => total_bedrock += 1,
+                            7 => { total_metal_bridge += 1; chunk_bridges += 1; }
+                            _ => {}
                         }
                     }
                 }
             }
             
-            if chunk_wood > 0 {
-                chunks_with_trees += 1;
+            if chunk_walls > 0 {
+                chunks_with_walls += 1;
             }
-            
-            total_wood_blocks += chunk_wood;
-            total_leaf_blocks += chunk_leaves;
+            if chunk_bridges > 0 {
+                chunks_with_bridges += 1;
+            }
         }
     }
     
-    println!("=== Tree Statistics ===");
+    println!("=== BRUTALIST MEGA-STRUCTURE Statistics ===");
     println!("Chunks generated: 100");
-    println!("Chunks with trees: {}", chunks_with_trees);
-    println!("Total wood blocks: {}", total_wood_blocks);
-    println!("Total leaf blocks: {}", total_leaf_blocks);
+    println!("Chunks with walls: {}", chunks_with_walls);
+    println!("Chunks with bridges: {}", chunks_with_bridges);
+    println!("Total concrete floor: {}", total_concrete_floor);
+    println!("Total concrete wall: {}", total_concrete_wall);
+    println!("Total hazard neon: {}", total_hazard_neon);
+    println!("Total metal bridge: {}", total_metal_bridge);
+    println!("Total bedrock: {}", total_bedrock);
     
-    // At least some chunks should have trees (depends on biome distribution)
+    // All chunks should have bedrock foundation
     assert!(
-        chunks_with_trees >= 5,
-        "Not enough chunks with trees: {} out of 100",
-        chunks_with_trees
+        total_bedrock > 50000,
+        "Not enough bedrock foundation: {}",
+        total_bedrock
     );
     
-    // Should have some wood and leaves
+    // Should have significant wall structures
     assert!(
-        total_wood_blocks > 20,
-        "Not enough wood blocks: {}",
-        total_wood_blocks
+        chunks_with_walls >= 50,
+        "Not enough chunks with walls: {} out of 100",
+        chunks_with_walls
     );
+    
+    // Should have concrete walls (brutalist aesthetic)
     assert!(
-        total_leaf_blocks > 100,
-        "Not enough leaf blocks: {}",
-        total_leaf_blocks
+        total_concrete_wall > 10000,
+        "Not enough concrete walls: {}",
+        total_concrete_wall
+    );
+    
+    // Should have some metal elements (bridges/catwalks)
+    assert!(
+        total_metal_bridge > 100,
+        "Not enough metal structures: {}",
+        total_metal_bridge
+    );
+    
+    // Should have hazard zones (strategic pits, not everywhere)
+    assert!(
+        total_hazard_neon > 100,
+        "Not enough hazard neon: {}",
+        total_hazard_neon
     );
 }
 
-/// Test: Verify tree structure is valid (trunk + canopy).
+/// Test: Verify maze structure is valid (walls, corridors, rooms).
+/// New design has lower walls (18-28) and more horizontal complexity.
 #[test]
-fn test_tree_structure() {
+fn test_maze_structure() {
     let seed = WorldSeed::new(12345);
     let gen = ChunkGenerator::new(seed);
     
-    let mut found_any_tree = false;
-    let mut trees_found = 0;
+    let mut walls_found = 0;
+    let mut floor_found = 0;
+    let mut metal_found = 0;
+    let mut max_wall_height = 0;
     
-    // Search area for trees - look for any wood block
-    for cz in -5..5 {
-        for cx in -5..5 {
+    // Search area for structure elements
+    for cz in -3..3 {
+        for cx in -3..3 {
             let chunk = gen.generate(ChunkCoord::new(cx, cz));
             
-            // Scan all blocks for wood
-            for y in 60..200 { // Focus on typical tree heights
                 for z in 0..16 {
                     for x in 0..16 {
-                        let block = chunk.get_block(x, y, z);
-                        if block.id == Block::WOOD.id {
-                            // Found wood - check if it's a tree base
-                            // (wood above grass/dirt/jungle grass)
-                            if y > 0 {
-                                let below = chunk.get_block(x, y - 1, z);
-                                // Check if below is grass (1), dirt (3), or jungle grass (12)
-                                if below.id == 1 || below.id == 3 || below.id == 12 {
-                                    trees_found += 1;
-                                    found_any_tree = true;
-                                    
-                                    if trees_found <= 3 {
-                                        // Count trunk and leaves
-                                        let mut trunk = 0;
-                                        let mut leaves = 0;
-                                        
-                                        for ty in y..y+10 {
-                                            let tb = chunk.get_block(x, ty, z);
-                                            if tb.id == Block::WOOD.id {
-                                                trunk += 1;
+                    // Check floor level (Y=4)
+                    let floor_block = chunk.get_block(x, 4, z);
+                    if floor_block.id == 1 { floor_found += 1; }
+                    
+                    // Check for any metal (ID 7) at any Y level
+                    for y in 0..50 {
+                        if chunk.get_block(x, y, z).id == 7 { 
+                            metal_found += 1; 
                                             }
                                         }
                                         
-                                        for dy in 0..6 {
-                                            for dz in -2i32..=2 {
-                                                for dx in -2i32..=2 {
-                                                    let lx = x as i32 + dx;
-                                                    let lz = z as i32 + dz;
-                                                    if lx >= 0 && lx < 16 && lz >= 0 && lz < 16 {
-                                                        if chunk.get_block(lx as usize, y + trunk + dy, lz as usize).id == Block::LEAVES.id {
-                                                            leaves += 1;
-                                                        }
-                                                    }
+                    // Measure wall heights
+                    if floor_block.id == 2 {
+                        let mut height = 0;
+                        for y in 4..50 {
+                            if chunk.get_block(x, y, z).id == 2 {
+                                height += 1;
+                            } else {
+                                break;
                                                 }
                                             }
-                                        }
-                                        
-                                        println!(
-                                            "Tree {} at chunk ({}, {}), block ({}, {}, {}): trunk={}, leaves={}",
-                                            trees_found, cx, cz, x, y, z, trunk, leaves
-                                        );
-                                    }
-                                }
-                            }
+                        if height > 0 {
+                            walls_found += 1;
+                            max_wall_height = max_wall_height.max(height);
                         }
                     }
                 }
@@ -212,11 +229,19 @@ fn test_tree_structure() {
         }
     }
     
-    println!("Total trees found: {}", trees_found);
+    println!("=== MAZE STRUCTURE ===");
+    println!("Floor blocks: {}", floor_found);
+    println!("Wall sections: {}", walls_found);
+    println!("Metal blocks (catwalks/platforms): {}", metal_found);
+    println!("Max wall height: {}", max_wall_height);
     
-    // We just need to verify trees exist
-    assert!(found_any_tree, "No trees found in 100 chunks");
-    assert!(trees_found > 5, "Too few trees found: {}", trees_found);
+    // Verify structure
+    assert!(floor_found > 1000, "Not enough floor: {}", floor_found);
+    assert!(walls_found > 100, "Not enough walls: {}", walls_found);
+    // Metal is sparse in the new design, just verify some exists
+    assert!(metal_found > 0, "No metal structures found");
+    assert!(max_wall_height <= 30, "Walls too tall: {} (should be <=30)", max_wall_height);
+    assert!(max_wall_height >= 10, "Walls too short: {}", max_wall_height);
 }
 
 /// Test: Verify terrain height distribution is natural.

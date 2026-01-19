@@ -366,7 +366,7 @@ impl ChunkGenerator {
     }
 
     /// Generates a chunk at the given coordinates.
-    /// GLITCH WARS UNDERCITY: 3D Caves + Multi-layer terrain
+    /// BRUTALIST MEGA-STRUCTURE: Grid Architecture Arena
     #[must_use]
     pub fn generate(&self, coord: ChunkCoord) -> Chunk {
         let mut chunk = Chunk::new(coord);
@@ -374,7 +374,7 @@ impl ChunkGenerator {
         let world_x = coord.world_x();
         let world_z = coord.world_z();
 
-        // UNDERCITY: 3D terrain with caves
+        // MEGA-STRUCTURE: Generate grid architecture
         for local_z in 0..CHUNK_SIZE {
             for local_x in 0..CHUNK_SIZE {
                 let block_x = world_x + local_x as i32;
@@ -384,17 +384,23 @@ impl ChunkGenerator {
             }
         }
         
-        // Carve the Validator Beam (exit point at origin)
-        self.carve_validator_beam(&mut chunk, world_x, world_z);
+        // Carve the Extraction Beam (goal at origin)
+        self.carve_extraction_beam(&mut chunk, world_x, world_z);
         
-        // Spawn loot crystals
-        self.generate_loot_crystals(&mut chunk, world_x, world_z);
+        // Spawn gold loot on bridges and towers
+        self.generate_gold_loot(&mut chunk, world_x, world_z);
 
         chunk
     }
     
-    /// THE UNDERCITY - 3D cave generation with multiple layers
-    /// Creates a "Swiss Cheese" structure with mining tunnels
+    /// ENTERPRISE MAZE GENERATOR - Complex Horizontal Labyrinth
+    /// 
+    /// Design Philosophy:
+    /// - Horizontal complexity over vertical height
+    /// - Multiple room types with procedural variation
+    /// - Strategic hazard placement (not everywhere)
+    /// - Clear pathways with interesting obstacles
+    /// - Production-grade deterministic generation
     fn generate_undercity_column(
         &self,
         chunk: &mut Chunk,
@@ -403,72 +409,254 @@ impl ChunkGenerator {
         block_x: i32,
         block_z: i32,
     ) {
-        // Configuration
-        const SURFACE_Y: usize = 48;        // Surface level
-        const CAVE_THRESHOLD: f64 = 0.55;   // Higher = fewer caves
-        const TUNNEL_THRESHOLD: f64 = 0.6;  // Horizontal tunnel carving
+        // =================================================================
+        // CONFIGURATION - Balanced Arena Layout
+        // =================================================================
+        const ROOM_SIZE: i32 = 24;        // Smaller rooms = more density
+        const WALL_THICKNESS: i32 = 2;    // Thin walls = more playable space
+        const BASE_FLOOR_Y: usize = 4;    // Low floor for minimal fall damage
+        const WALL_HEIGHT: usize = 18;    // Low walls - can see over sometimes
+        const TOWER_MAX: usize = 28;      // Towers slightly taller
+        const CATWALK_Y: usize = 12;      // Second level catwalks
+        const CORRIDOR_WIDTH: i32 = 5;    // Wide corridors for fast movement
         
-        let fx = block_x as f64;
-        let fz = block_z as f64;
+        // Hazard configuration - strategic pits, not everywhere
+        const HAZARD_LAYER: usize = 2;    // Only Y=2 is the death zone
+        const PIT_CHANCE: f64 = 0.15;     // 15% of open floor has pits
         
-        // Surface height variation using 2D noise
-        let surface_noise = self.detail_noise.sample(fx * 0.02, fz * 0.02);
-        let surface_height = SURFACE_Y + (surface_noise * 8.0) as usize;
-        let surface_height = surface_height.clamp(40, 56);
+        // Spawn safety
+        const SPAWN_RADIUS: i32 = 16;
+        const GOAL_RADIUS: f64 = 5.0;
         
+        // =================================================================
+        // COORDINATE SYSTEM
+        // =================================================================
+        
+        // Room grid position
+        let room_x = block_x.div_euclid(ROOM_SIZE);
+        let room_z = block_z.div_euclid(ROOM_SIZE);
+        let local_rx = block_x.rem_euclid(ROOM_SIZE);
+        let local_rz = block_z.rem_euclid(ROOM_SIZE);
+        
+        // Distance calculations
+        let dist_from_origin = ((block_x * block_x + block_z * block_z) as f64).sqrt();
+        let is_spawn_area = dist_from_origin < SPAWN_RADIUS as f64;
+        let is_goal_zone = dist_from_origin < GOAL_RADIUS;
+        
+        // =================================================================
+        // ROOM TYPE DETERMINATION (Procedural from room coords)
+        // =================================================================
+        let room_hash = ((room_x.wrapping_mul(73856093)) ^ (room_z.wrapping_mul(19349663))) as u32;
+        let room_type = room_hash % 5; // 5 room types
+        
+        // =================================================================
+        // STRUCTURE DETECTION
+        // =================================================================
+        
+        // Outer walls (room perimeter)
+        let is_outer_wall_x = local_rx < WALL_THICKNESS || local_rx >= ROOM_SIZE - WALL_THICKNESS;
+        let is_outer_wall_z = local_rz < WALL_THICKNESS || local_rz >= ROOM_SIZE - WALL_THICKNESS;
+        let is_outer_wall = is_outer_wall_x || is_outer_wall_z;
+        let is_corner = is_outer_wall_x && is_outer_wall_z;
+        
+        // Door openings in walls (connect rooms)
+        let is_door = {
+            let door_pos = ROOM_SIZE / 2;
+            let door_width = CORRIDOR_WIDTH;
+            let in_door_x = local_rx >= door_pos - door_width/2 && local_rx < door_pos + door_width/2;
+            let in_door_z = local_rz >= door_pos - door_width/2 && local_rz < door_pos + door_width/2;
+            (is_outer_wall_x && in_door_z) || (is_outer_wall_z && in_door_x)
+        };
+        
+        // Main corridors (cross pattern through room center)
+        let is_main_corridor = {
+            let center = ROOM_SIZE / 2;
+            let half_width = CORRIDOR_WIDTH / 2;
+            (local_rx >= center - half_width && local_rx < center + half_width) ||
+            (local_rz >= center - half_width && local_rz < center + half_width)
+        };
+        
+        // =================================================================
+        // ROOM-SPECIFIC FEATURES (Based on room_type)
+        // =================================================================
+        
+        // Type 0: Open plaza - just outer walls
+        // Type 1: Pillar room - internal pillars
+        // Type 2: Hazard room - central pit with bridges
+        // Type 3: Corridor maze - internal walls creating paths
+        // Type 4: Observation deck - raised platform in center
+        
+        let is_internal_pillar = room_type == 1 && {
+            let pillar_spacing = 6;
+            let pillar_size = 2;
+            let px = (local_rx - WALL_THICKNESS) % pillar_spacing;
+            let pz = (local_rz - WALL_THICKNESS) % pillar_spacing;
+            px < pillar_size && pz < pillar_size && 
+            local_rx > WALL_THICKNESS + 2 && local_rx < ROOM_SIZE - WALL_THICKNESS - 2 &&
+            local_rz > WALL_THICKNESS + 2 && local_rz < ROOM_SIZE - WALL_THICKNESS - 2
+        };
+        
+        let is_hazard_pit = room_type == 2 && {
+            // Central pit in hazard rooms
+            let center = ROOM_SIZE / 2;
+            let pit_radius = 6;
+            let dx = (local_rx - center).abs();
+            let dz = (local_rz - center).abs();
+            dx < pit_radius && dz < pit_radius && !is_main_corridor
+        };
+        
+        let is_internal_maze_wall = room_type == 3 && {
+            // Internal maze walls - create L and T junctions
+            let segment = 8;
+            let wall_pattern = ((local_rx / segment) + (local_rz / segment)) % 2 == 0;
+            let on_segment_edge = (local_rx % segment < 2) || (local_rz % segment < 2);
+            wall_pattern && on_segment_edge && !is_main_corridor &&
+            local_rx > WALL_THICKNESS + 1 && local_rx < ROOM_SIZE - WALL_THICKNESS - 1 &&
+            local_rz > WALL_THICKNESS + 1 && local_rz < ROOM_SIZE - WALL_THICKNESS - 1
+        };
+        
+        let is_raised_platform = room_type == 4 && {
+            // Raised observation platform in center
+            let center = ROOM_SIZE / 2;
+            let platform_size = 8;
+            let dx = (local_rx - center).abs();
+            let dz = (local_rz - center).abs();
+            dx < platform_size / 2 && dz < platform_size / 2
+        };
+        
+        // =================================================================
+        // CATWALK SYSTEM (Second level paths)
+        // =================================================================
+        let is_catwalk = {
+            // Catwalks run along room edges at CATWALK_Y
+            let catwalk_offset = WALL_THICKNESS + 2;
+            let on_catwalk_x = local_rx == catwalk_offset || local_rx == ROOM_SIZE - catwalk_offset - 1;
+            let on_catwalk_z = local_rz == catwalk_offset || local_rz == ROOM_SIZE - catwalk_offset - 1;
+            (on_catwalk_x || on_catwalk_z) && !is_corner
+        };
+        
+        // =================================================================
+        // TOWER HEIGHT (Variable at corners)
+        // =================================================================
+        let tower_height = if is_corner {
+            let noise = self.detail_noise.sample(room_x as f64 * 0.3, room_z as f64 * 0.3);
+            let normalized = (noise + 1.0) / 2.0;
+            WALL_HEIGHT + (normalized * (TOWER_MAX - WALL_HEIGHT) as f64) as usize
+        } else {
+            WALL_HEIGHT
+        };
+        
+        // =================================================================
+        // RANDOM PIT GENERATION (Strategic, not everywhere)
+        // =================================================================
+        let has_random_pit = !is_spawn_area && !is_main_corridor && !is_outer_wall && {
+            let pit_noise = self.cave_noise.sample(block_x as f64 * 0.2, block_z as f64 * 0.2);
+            pit_noise > (1.0 - PIT_CHANCE * 2.0) // Convert to threshold
+        };
+        
+        // =================================================================
+        // BLOCK GENERATION
+        // =================================================================
         for y in 0..CHUNK_HEIGHT {
-            let fy = y as f64;
-            
-            // 3D Cave noise - creates swiss cheese underground
-            let cave_noise = self.sample_3d_noise(fx * 0.05, fy * 0.08, fz * 0.05);
-            
-            // Horizontal tunnel noise (for mining corridors)
-            let tunnel_noise = self.sample_3d_noise(fx * 0.1, fy * 0.02, fz * 0.1);
-            
-            // Determine if this voxel is a cave
-            let is_cave = cave_noise > CAVE_THRESHOLD || 
-                         (tunnel_noise > TUNNEL_THRESHOLD && y > 5 && y < surface_height - 5);
-            
-            let block = if y == 0 {
-                // Layer 0: Indestructible Bedrock (Obsidian Black)
-                Block::new(5) // ID 5 = Bedrock/Obsidian
-            } else if y < 4 {
-                // Deep layer: Dense bedrock (harder to mine)
-                if is_cave && y > 1 {
-                    Block::AIR
+            let block = if y < HAZARD_LAYER {
+                // Bedrock foundation
+                Block::new(5)
+                
+            } else if y == HAZARD_LAYER {
+                // Hazard layer - red neon death
+                if is_spawn_area || is_goal_zone {
+                    Block::new(5) // Safe bedrock under spawn
+                } else if is_hazard_pit || has_random_pit {
+                    Block::new(3) // RED NEON - visible death
                 } else {
-                    Block::new(5)
+                    Block::new(5) // Bedrock under walkable areas
                 }
-            } else if y < surface_height {
-                // Underground: Metal/Stone with caves
-                if is_cave {
-                    Block::AIR // Cave
-                } else {
-                    // Different underground materials based on depth
-                    let depth_ratio = (surface_height - y) as f64 / surface_height as f64;
-                    let material_noise = self.detail_noise.sample(fx * 0.2 + fy * 0.1, fz * 0.2);
-                    
-                    if depth_ratio > 0.7 {
-                        // Deep: Dark Metal (ID 2)
-                        Block::new(2)
-                    } else if material_noise > 0.6 {
-                        // Veins of valuable ore (ID 3 = Gold/Crystal)
-                        Block::new(3)
-                    } else {
-                        // Standard: Industrial Metal (ID 2)
-                        Block::new(2)
-                    }
-                }
-            } else if y == surface_height {
-                // Surface layer: The Grid Floor
-                let is_grid_line = (block_x % 8 == 0) || (block_z % 8 == 0);
-                if is_grid_line {
-                    Block::new(3) // Grid lines = Glowing
-                } else {
-                    Block::new(2) // Floor tiles = Dark Metal
-                }
+                
+            } else if y == BASE_FLOOR_Y {
+                // Main floor
+                if is_goal_zone {
+                    Block::new(4) // Goal zone - ice white
+                } else if is_hazard_pit || has_random_pit {
+                    Block::AIR // Pit opening
+                } else if is_outer_wall && !is_door {
+                    Block::new(2) // Wall base
+                } else if is_internal_pillar || is_internal_maze_wall {
+                    Block::new(2) // Internal structure base
             } else {
-                // Above surface: Air (The Void)
+                    Block::new(1) // Concrete floor
+                }
+                
+            } else if y > BASE_FLOOR_Y && y <= BASE_FLOOR_Y + 3 {
+                // Floor thickness (3 blocks) for pits visibility
+                if is_hazard_pit || has_random_pit {
+                    Block::AIR // Open pit
+                } else if is_outer_wall && !is_door {
+                    Block::new(2) // Wall
+                } else if is_internal_pillar || is_internal_maze_wall {
+                    Block::new(2) // Internal walls/pillars
+                } else if is_raised_platform && y == BASE_FLOOR_Y + 3 {
+                    Block::new(7) // Platform surface
+                } else {
+                    Block::AIR // Walking space
+                }
+                
+            } else if y > BASE_FLOOR_Y + 3 && y < WALL_HEIGHT {
+                // Wall and structure height
+                if is_corner && y < tower_height {
+                    Block::new(2) // Corner tower
+                } else if is_outer_wall && !is_door && !is_corner {
+                    // Walls with window cutouts
+                    let window_band = y > BASE_FLOOR_Y + 6 && y < WALL_HEIGHT - 3;
+                    let window_pattern = ((block_x + block_z) % 6) < 3;
+                    if window_band && window_pattern {
+                        Block::AIR // Window
+                    } else {
+                        Block::new(2) // Wall
+                    }
+                } else if is_internal_pillar && y < BASE_FLOOR_Y + 10 {
+                    Block::new(2) // Short pillars
+                } else if is_internal_maze_wall && y < BASE_FLOOR_Y + 8 {
+                    Block::new(2) // Low maze walls
+                } else if is_raised_platform && y < BASE_FLOOR_Y + 6 {
+                    Block::new(2) // Platform support pillars (corners only)
+                        } else {
+                            Block::AIR
+                        }
+                
+            } else if y == CATWALK_Y {
+                // Catwalk level
+                if is_catwalk && !is_corner {
+                    Block::new(7) // Metal catwalk
+                } else if is_outer_wall && !is_door {
+                    Block::new(2) // Wall continues
+                } else if is_corner {
+                    Block::new(2) // Tower continues
+                } else {
+                    Block::AIR
+                }
+                
+            } else if y == CATWALK_Y + 1 {
+                // Catwalk railing
+                if is_catwalk && !is_corner {
+                    // Only edges get railings
+                    let is_edge = local_rx == WALL_THICKNESS + 2 || 
+                                  local_rx == ROOM_SIZE - WALL_THICKNESS - 3 ||
+                                  local_rz == WALL_THICKNESS + 2 ||
+                                  local_rz == ROOM_SIZE - WALL_THICKNESS - 3;
+                    if is_edge { Block::new(7) } else { Block::AIR }
+                } else if is_outer_wall && !is_door {
+                    Block::new(2)
+                } else if is_corner && y < tower_height {
+                    Block::new(2)
+                } else {
+                    Block::AIR
+                }
+                
+            } else if y > CATWALK_Y + 1 && y < tower_height && is_corner {
+                // Tower extends above catwalk
+                Block::new(2)
+                
+            } else {
                 Block::AIR
             };
 
@@ -476,11 +664,16 @@ impl ChunkGenerator {
         }
 
         // Update height map
+        let surface_height = if is_corner { tower_height } 
+                           else if is_outer_wall { WALL_HEIGHT }
+                           else if is_raised_platform { BASE_FLOOR_Y + 6 }
+                           else { BASE_FLOOR_Y };
         chunk.height_map[local_z][local_x] = surface_height.min(255) as u8;
         chunk.set_biome(local_x, local_z, Biome::Desert);
     }
     
-    /// 3D Simplex Noise approximation using 2D layers
+    /// 3D Simplex Noise approximation using 2D layers (legacy, kept for future use)
+    #[allow(dead_code)]
     fn sample_3d_noise(&self, x: f64, y: f64, z: f64) -> f64 {
         // Combine multiple 2D noise samples to simulate 3D
         let n1 = self.cave_noise.sample(x, z + y * 0.7);
@@ -491,10 +684,11 @@ impl ChunkGenerator {
         ((n1 + n2 + n3) / 3.0 + 1.0) / 2.0
     }
     
-    /// Carve the Validator Beam - a clear cylinder at origin
-    /// This is the EXIT POINT where players extract
-    fn carve_validator_beam(&self, chunk: &mut Chunk, world_x: i32, world_z: i32) {
-        const BEAM_RADIUS: i32 = 5;
+    /// Carve the Extraction Beam - clear cylinder at origin
+    /// This is the GOAL - reach it to escape the arena
+    fn carve_extraction_beam(&self, chunk: &mut Chunk, world_x: i32, world_z: i32) {
+        const BEAM_RADIUS: i32 = 4;
+        const FLOOR_Y: usize = 4; // Match BASE_FLOOR_Y from structure gen
         
         for local_z in 0..CHUNK_SIZE {
             for local_x in 0..CHUNK_SIZE {
@@ -504,46 +698,70 @@ impl ChunkGenerator {
                 // Check if within beam radius of origin
                 let dist_sq = block_x * block_x + block_z * block_z;
                 if dist_sq <= BEAM_RADIUS * BEAM_RADIUS {
-                    // Clear vertical column (except bedrock)
-                    for y in 1..CHUNK_HEIGHT {
+                    // Clear vertical column above floor
+                    for y in (FLOOR_Y + 1)..CHUNK_HEIGHT {
                         chunk.set_block(local_x, y, local_z, Block::AIR);
                     }
-                    // Floor at Y=1 is special "Safe Zone" (ID 4 = Cyan)
-                    chunk.set_block(local_x, 1, local_z, Block::new(4));
+                    // Glowing Goal Zone floor (ID 4 = Ice White)
+                    chunk.set_block(local_x, FLOOR_Y, local_z, Block::new(4));
                 }
             }
         }
     }
     
-    /// Generate valuable loot crystals scattered in caves
-    fn generate_loot_crystals(&self, chunk: &mut Chunk, world_x: i32, world_z: i32) {
+    /// Generate valuable GOLD LOOT on platforms and catwalks
+    /// Risk vs Reward: Further from spawn = more gold
+    fn generate_gold_loot(&self, chunk: &mut Chunk, world_x: i32, world_z: i32) {
+        // Match the new structure heights
+        const FLOOR_Y: usize = 4;
+        const CATWALK_Y: usize = 12;
+        const PLATFORM_Y: usize = 7; // BASE_FLOOR_Y + 3
+        
         for local_z in 0..CHUNK_SIZE {
             for local_x in 0..CHUNK_SIZE {
                 let block_x = world_x + local_x as i32;
                 let block_z = world_z + local_z as i32;
                 
                 // Skip near spawn
-                if block_x.abs() < 10 && block_z.abs() < 10 {
+                let dist_from_origin = ((block_x * block_x + block_z * block_z) as f64).sqrt();
+                if dist_from_origin < 24.0 {
                     continue;
                 }
                 
-                // Use noise for crystal placement
-                let crystal_noise = self.tree_noise.sample(
+                // Use noise for gold placement
+                let gold_noise = self.tree_noise.sample(
                     block_x as f64 * 0.15,
                     block_z as f64 * 0.15,
                 );
                 
-                if crystal_noise > 0.85 {
-                    // Find a cave floor to place crystal on
-                    for y in 5..45 {
+                // Higher probability further from spawn
+                let distance_bonus = (dist_from_origin / 80.0).min(0.25);
+                let spawn_threshold = 0.82 - distance_bonus;
+                
+                if gold_noise > spawn_threshold {
+                    // Check multiple levels for valid placement
+                    let check_levels = [FLOOR_Y + 1, PLATFORM_Y + 1, CATWALK_Y + 1];
+                    
+                    for &y in &check_levels {
+                        if y >= CHUNK_HEIGHT { continue; }
+                        
                         let below = chunk.get_block(local_x, y - 1, local_z);
                         let current = chunk.get_block(local_x, y, local_z);
-                        let above = chunk.get_block(local_x, y + 1, local_z);
                         
-                        // If standing on solid ground in a cave
-                        if below.id != 0 && current.id == 0 && above.id == 0 {
-                            // Place glowing crystal (ID 3)
-                            chunk.set_block(local_x, y, local_z, Block::new(3));
+                        // Place on solid surfaces
+                        if (below.id == 7 || below.id == 1 || below.id == 2) && current.id == 0 {
+                            chunk.set_block(local_x, y, local_z, Block::new(6));
+                            break;
+                        }
+                    }
+                    
+                    // Also check tower tops (shorter towers now)
+                    for y in (18..30).rev() {
+                        let below = chunk.get_block(local_x, y - 1, local_z);
+                        let current = chunk.get_block(local_x, y, local_z);
+                        
+                        if below.id == 2 && current.id == 0 {
+                            chunk.set_block(local_x, y, local_z, Block::new(6));
                             break;
                         }
                     }
@@ -850,8 +1068,8 @@ mod tests {
         let gen = ChunkGenerator::new(WorldSeed::new(42));
         let chunk = gen.generate(ChunkCoord::new(0, 0));
 
-        // Should have bedrock at bottom
-        assert_eq!(chunk.get_block(0, 0, 0).id, 7, "Should have bedrock at y=0");
+        // Should have bedrock at bottom (ID 5 in new palette)
+        assert_eq!(chunk.get_block(0, 0, 0).id, 5, "Should have bedrock at y=0");
 
         // Should have some non-air blocks
         let mut solid_count = 0;
